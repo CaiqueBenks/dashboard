@@ -34,8 +34,8 @@ window.storage = {
   },
   get(k) {
     let r = k in cache ? cache[k] : oGet(k)
-    if (r === null) return null
-    try { return JSON.parse(r) } catch (e) { return r }
+    if (r === null || r === undefined) return null
+    return r
   },
   delete(k) {
     delete cache[k]; save(); oDel(k)
@@ -46,6 +46,8 @@ window.storage = {
   getItem(k) { return this.get(k) },
   removeItem(k) { this.delete(k) }
 }
+
+console.log('Storage adaptado: localStorage + Firebase')
 
 async function sync() {
   try {
