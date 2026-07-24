@@ -35,7 +35,7 @@ window.storage = {
   get(k) {
     let r = k in cache ? cache[k] : oGet(k)
     if (r === null || r === undefined) return null
-    return r
+    return { value: r }
   },
   delete(k) {
     delete cache[k]; save(); oDel(k)
@@ -43,7 +43,11 @@ window.storage = {
   },
   remove(k) { this.delete(k) },
   setItem(k, v) { this.set(k, v) },
-  getItem(k) { return this.get(k) },
+  getItem(k) {
+    let r = k in cache ? cache[k] : oGet(k)
+    if (r === null || r === undefined) return null
+    return r
+  },
   removeItem(k) { this.delete(k) }
 }
 
