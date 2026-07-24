@@ -1,84 +1,68 @@
-import { db } from './firebase.js';
-import { doc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { db } from './firebase.js'
+import { doc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore'
 
-const cache = {};
-const locallyModified = new Set();
+const cache = {}
+const modified = new Set()
+const oSet = localStorage.setItem.bind(localStorage)
+const oGet = localStorage.getItem.bind(localStorage)
+const oDel = localStorage.removeItem.bind(localStorage)
 
-const originalSetItem = localStorage.setItem.bind(localStorage);
-const originalGetItem = localStorage.getItem.bind(localStorage);
-const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+try { const r = oGet('__dc__'); if (r) Object.assign(cache, JSON.parse(r)) } catch (e) {}
 
-try {
-  const raw = originalGetItem('__dashboard_cache__');
-  if (raw) Object.assign(cache, JSON.parse(raw));
-} catch (e) {}
+function save() { try { oSet('__dc__', JSON.stringify(cache)) } catch (e) {} }
 
-function persistCache() {
-  try {
-    originalSetItem('__dashboard_cache__', JSON.stringify(cache));
-  } catch (e) {}
+localStorage.setItem = function(k, v) {
+  if (k === '__dc__') return
+  const s = typeof v === 'string' ? v : JSON.stringify(v)
+  cache[k] = s; modified.add(k); save()
+  setDoc(doc(db, 'dashboard_data', k), { value: s }).catch(e => console.error(e))
+  oSet(k, s)
 }
 
-localStorage.setItem = function (key, value) {
-  if (key === '__dashboard_cache__') return;
-  const v = typeof value === 'string' ? value : JSON.stringify(value);
-  cache[key] = v;
-  locallyModified.add(key);
-  persistCache();
-  setDoc(doc(db, 'dashboard_data', key), { value: v }).catch(function (err) {
-    console.error('Erro Firestore (setItem):', err);
-  });
-  originalSetItem(key, v);
-};
-
-localStorage.removeItem = function (key) {
-  if (key === '__dashboard_cache__') return;
-  delete cache[key];
-  persistCache();
-  deleteDoc(doc(db, 'dashboard_data', key)).catch(function (err) {
-    console.error('Erro Firestore (removeItem):', err);
-  });
-  originalRemoveItem(key);
-};
+localStorage.removeItem = function(k) {
+  if (k === '__dc__') return
+  delete cache[k]; save()
+  deleteDoc(doc(db, 'dashboard_data', k)).catch(e => console.error(e))
+  oDel(k)
+}
 
 window.storage = {
-  set: function (key, value) {
-    const v = typeof value === 'string' ? value : JSON.stringify(value);
-    cache[key] = v;
-    locallyModified.add(key);
-    persistCache();
-    originalSetItem(key, v);
-    setDoc(doc(db, 'dashboard_data', key), { value: v }).catch(function (err) {
-      console.error('Erro Firestore (set):', err);
-    });
+  set(k, v) {
+    const s = typeof v === 'string' ? v : JSON.stringify(v)
+    cache[k] = s; modified.add(k); save(); oSet(k, s)
+    setDoc(doc(db, 'dashboard_data', k), { value: s }).catch(e => console.error(e))
   },
+  get(k) {
+    let r = k in cache ? cache[k] : oGet(k)
+    if (r === null) return null
+    try { return JSON.parse(r) } catch (e) { return r }
+  },
+  delete(k) {
+    delete cache[k]; save(); oDel(k)
+    deleteDoc(doc(db, 'dashboard_data', k)).catch(e => console.error(e))
+  },
+  remove(k) { this.delete(k) },
+  setItem(k, v) { this.set(k, v) },
+  getItem(k) { return this.get(k) },
+  removeItem(k) { this.delete(k) }
+}
 
-  get: function (key) {
-    let raw;
-    if (key in cache) {
-      raw = cache[key];
-    } else {
-      raw = originalGetItem(key);
-      if (raw !== null) cache[key] = raw;
+async function sync() {
+  try {
+    const s = await getDocs(collection(db, 'dashboard_data'))
+    let changed = false
+    s.forEach(d => {
+      const v = d.data().value
+      if (v === undefined || modified.has(d.id)) return
+      if (cache[d.id] !== v) changed = true
+      cache[d.id] = v; oSet(d.id, v)
+    })
+    save()
+    if (changed && !sessionStorage.getItem('__s__')) {
+      sessionStorage.setItem('__s__', '1')
+      location.reload()
     }
-    if (raw === null || raw === undefined) return null;
-    try {
-      return JSON.parse(raw);
-    } catch (e) {
-      return raw;
-    }
-  },
+  } catch (e) { console.error(e) }
+}
 
-  delete: function (key) {
-    delete cache[key];
-    persistCache();
-    originalRemoveItem(key);
-    deleteDoc(doc(db, 'dashboard_data', key)).catch(function (err) {
-      console.error('Erro Firestore (delete):', err);
-    });
-  },
-
-  remove: function (key) {
-    this.delete(key);
-  },
-  
+sync()
