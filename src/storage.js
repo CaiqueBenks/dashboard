@@ -3,29 +3,37 @@ import { doc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore'
 
 const cache = {};
 
+// Captura os métodos ORIGINAIS antes de interceptar
+const originalSetItem = localStorage.setItem.bind(localStorage);
+const originalGetItem = localStorage.getItem.bind(localStorage);
+const originalRemoveItem = localStorage.removeItem.bind(localStorage);
+
+// Carrega cache local
 try {
-  const raw = localStorage.getItem('__dashboard_cache__');
+  const raw = originalGetItem('__dashboard_cache__');
   if (raw) Object.assign(cache, JSON.parse(raw));
 } catch (e) {}
 
+// SALVA cache usando o método ORIGINAL (sem disparar a interceptação)
 function persistCache() {
   try {
-    localStorage.setItem('__dashboard_cache__', JSON.stringify(cache));
+    originalSetItem('__dashboard_cache__', JSON.stringify(cache));
   } catch (e) {}
 }
 
-const originalSetItem = localStorage.setItem.bind(localStorage);
-const originalRemoveItem = localStorage.removeItem.bind(localStorage);
-
+// Intercepta localStorage.setItem → salva no Firebase
 localStorage.setItem = function(key, value) {
-  cache[key] = typeof value === 'string' ? value : JSON.stringify(value);
+  if (key === '__dashboard_cache__') return; // evita loop
+  const v = typeof value === 'string' ? value : JSON.stringify(value);
+  cache[key] = v;
   persistCache();
-  setDoc(doc(db, 'dashboard_data', key), { value: cache[key] })
+  setDoc(doc(db, 'dashboard_data', key), { value: v })
     .catch(err => console.error('Erro Firestore (setItem):', err));
   originalSetItem(key, value);
 };
 
 localStorage.removeItem = function(key) {
+  if (key === '__dashboard_cache__') return;
   delete cache[key];
   persistCache();
   deleteDoc(doc(db, 'dashboard_data', key))
@@ -33,18 +41,20 @@ localStorage.removeItem = function(key) {
   originalRemoveItem(key);
 };
 
+// Cria window.storage com todos os nomes de método
 window.storage = {
   set(key, value) {
     const v = typeof value === 'string' ? value : JSON.stringify(value);
     cache[key] = v;
     persistCache();
+    originalSetItem(key, v);
     setDoc(doc(db, 'dashboard_data', key), { value: v })
       .catch(err => console.error('Erro Firestore (set):', err));
   },
 
   get(key) {
     if (key in cache) return cache[key];
-    const raw = localStorage.getItem(key);
+    const raw = originalGetItem(key);
     if (raw !== null) { cache[key] = raw; return raw; }
     return null;
   },
@@ -52,12 +62,12 @@ window.storage = {
   delete(key) {
     delete cache[key];
     persistCache();
+    originalRemoveItem(key);
     deleteDoc(doc(db, 'dashboard_data', key))
       .catch(err => console.error('Erro Firestore (delete):', err));
   },
 
   remove(key) { this.delete(key); },
-
   setItem(key, value) { this.set(key, value); },
   getItem(key) { return this.get(key); },
   removeItem(key) { this.delete(key); },
@@ -65,6 +75,7 @@ window.storage = {
 
 console.log('✅ Storage adaptado: localStorage → Firebase');
 
+// Sincroniza dados da nuvem ao carregar
 async function syncFromCloud() {
   try {
     const snapshot = await getDocs(collection(db, 'dashboard_data'));
@@ -73,12 +84,10 @@ async function syncFromCloud() {
     snapshot.forEach(docSnap => {
       const data = docSnap.data();
       if (data.value !== undefined) {
-        const existing = cache[docSnap.id];
-        if (existing !== data.value) {
-          dataChanged = true;
-        }
+        const existing = originalGetItem(docSnap.id);
+        if (existing !== data.value) dataChanged = true;
         cache[docSnap.id] = data.value;
-        try { originalSetItem(docSnap.id, data.value); } catch(e) {}
+        originalSetItem(docSnap.id, data.value);
       }
     });
 
@@ -87,7 +96,6 @@ async function syncFromCloud() {
 
     if (dataChanged && !sessionStorage.getItem('__synced__')) {
       sessionStorage.setItem('__synced__', 'true');
-      console.log('🔄 Recarregando para exibir dados da nuvem...');
       window.location.reload();
     }
   } catch (err) {
