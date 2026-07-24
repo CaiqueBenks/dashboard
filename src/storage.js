@@ -1,21 +1,17 @@
 import { db } from './firebase.js';
-import { doc, setDoc, getDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, getDocs } from 'firebase/firestore';
 
 const cache = {};
 
 try {
   const raw = localStorage.getItem('__dashboard_cache__');
   if (raw) Object.assign(cache, JSON.parse(raw));
-} catch (e) {
-  console.warn('Cache local não pôde ser carregado:', e);
-}
+} catch (e) {}
 
 function persistCache() {
   try {
     localStorage.setItem('__dashboard_cache__', JSON.stringify(cache));
-  } catch (e) {
-    console.warn('Cache local não pôde ser salvo:', e);
-  }
+  } catch (e) {}
 }
 
 const originalSetItem = localStorage.setItem.bind(localStorage);
@@ -67,26 +63,35 @@ window.storage = {
   removeItem(key) { this.delete(key); },
 };
 
-// ── Sincroniza dados da nuvem ANTES do React renderizar ────
-let syncResolve;
-export const syncPromise = new Promise(resolve => { syncResolve = resolve; });
+console.log('✅ Storage adaptado: localStorage → Firebase');
 
 async function syncFromCloud() {
   try {
     const snapshot = await getDocs(collection(db, 'dashboard_data'));
+    let dataChanged = false;
+
     snapshot.forEach(docSnap => {
       const data = docSnap.data();
       if (data.value !== undefined) {
+        const existing = cache[docSnap.id];
+        if (existing !== data.value) {
+          dataChanged = true;
+        }
         cache[docSnap.id] = data.value;
         try { originalSetItem(docSnap.id, data.value); } catch(e) {}
       }
     });
+
     persistCache();
     console.log('✅ Sincronização com a nuvem concluída!');
+
+    if (dataChanged && !sessionStorage.getItem('__synced__')) {
+      sessionStorage.setItem('__synced__', 'true');
+      console.log('🔄 Recarregando para exibir dados da nuvem...');
+      window.location.reload();
+    }
   } catch (err) {
     console.error('Erro ao sincronizar da nuvem:', err);
-  } finally {
-    syncResolve();
   }
 }
 
