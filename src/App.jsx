@@ -1,6 +1,92 @@
+O conteúdo é gerado pelo usuário e não verificado.
+
+
+Saiba como personalizar
 import { useState, useEffect } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie } from "recharts";
 import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X } from "lucide-react";
+
+// ─── CSS Global ───────────────────────────────────────────────
+function useGlobalCSS() {
+  useEffect(() => {
+    if (document.getElementById("dg-css")) return;
+    const el = document.createElement("style");
+    el.id = "dg-css";
+    el.textContent = `
+      @keyframes shimmer {
+        0%   { background-position: -400% 0 }
+        100% { background-position:  400% 0 }
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(10px) }
+        to   { opacity: 1; transform: translateY(0) }
+      }
+      .dg-lift {
+        transition: transform .18s ease, box-shadow .18s ease;
+        cursor: default;
+      }
+      .dg-lift:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 28px rgba(0,0,0,.22);
+      }
+      .dg-page { animation: fadeUp .28s ease; }
+      .dg-btn  { transition: opacity .15s, transform .12s; }
+      .dg-btn:active { transform: scale(.96); }
+      @media print {
+        .no-print { display: none !important; }
+        .dg-main  { margin-left: 0 !important; }
+        @page { margin: 10mm; size: A4 landscape; }
+      }
+    `;
+    document.head.appendChild(el);
+  }, []);
+}
+
+// ─── Skeleton ─────────────────────────────────────────────────
+function Skelet({ w = "100%", h = 18, r = 6, T }) {
+  return (
+    <div style={{
+      width: w, height: h, borderRadius: r, flexShrink: 0,
+      background: `linear-gradient(90deg, ${T.border} 25%, ${T.card2} 50%, ${T.border} 75%)`,
+      backgroundSize: "400% 100%",
+      animation: "shimmer 1.6s infinite",
+    }} />
+  );
+}
+
+function SkeletonCard({ T }) {
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+        <Skelet w={110} h={11} r={4} T={T} />
+        <Skelet w={32} h={32} r={8} T={T} />
+      </div>
+      <Skelet w="70%" h={26} r={6} T={T} />
+      <div style={{ marginTop: 10 }}><Skelet w="50%" h={10} r={4} T={T} /></div>
+      <div style={{ marginTop: 14 }}><Skelet w="100%" h={5} r={3} T={T} /></div>
+    </div>
+  );
+}
+
+function SkeletonChart({ T }) {
+  return (
+    <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 20 }}>
+        <Skelet w={160} h={14} r={4} T={T} />
+        <div style={{ display: "flex", gap: 8 }}>
+          {[80, 80, 80, 100, 110].map((w, i) => <Skelet key={i} w={w} h={28} r={20} T={T} />)}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 160 }}>
+        {[60, 90, 50, 120, 80, 140, 70, 110, 55, 130].map((h, i) => (
+          <div key={i} style={{ flex: 1, borderRadius: "4px 4px 0 0", overflow: "hidden" }}>
+            <Skelet w="100%" h={h} r={4} T={T} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const THEMES = {
   dark:  { bg:"#0f172a", card:"#1e293b", card2:"#162032", border:"#334155", text:"#f1f5f9", sub:"#94a3b8", muted:"#64748b", faint:"#475569", inputBg:"#0f172a" },
@@ -49,6 +135,24 @@ const exportCSV = (rows,headers,filename) => {
 };
 let _pdfCb=null;
 const exportPDF=(html,title)=>{ if(_pdfCb)_pdfCb(html,title); };
+
+const printDashboard = () => {
+  const style = document.createElement("style");
+  style.id = "print-override";
+  style.innerHTML = `
+    @media print {
+      body > div > div:first-child { display: none !important; }
+      body > div > div:last-child > div:first-child { display: none !important; }
+      body > div > div:last-child { margin-left: 0 !important; }
+      body { background: #fff !important; }
+      button { display: none !important; }
+      @page { margin: 15mm; size: A4 landscape; }
+    }
+  `;
+  document.head.appendChild(style);
+  window.print();
+  setTimeout(() => { const s = document.getElementById("print-override"); if(s) s.remove(); }, 1000);
+};
 
 // ── PDFModal ─────────────────────────────────────────────────
 function PDFModal({content,title,onClose}) {
@@ -1518,12 +1622,14 @@ function Compras({T,onPendingChange}) {
 export default function App() {
   const [page,          setPage]          =useState("home");
   const [dark,          setDark]          =useState(true);
+  const [compact,       setCompact]       =useState(false);
   const [reloadKey,     setReloadKey]     =useState(0);
   const [atrasoAlert,   setAtrasoAlert]   =useState(false);
   const [presentMode,   setPresentMode]   =useState(false);
   const [pdfContent,    setPdfContent]    =useState(null);
   const [pdfTitle,      setPdfTitle]      =useState("");
   const T=THEMES[dark?"dark":"light"];
+  useGlobalCSS();
 
   useEffect(()=>{ _pdfCb=(html,t)=>{setPdfContent(html);setPdfTitle(t);}; },[]);
 
@@ -1583,6 +1689,9 @@ export default function App() {
         <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,transition:"background .2s"}}>
           <div style={{fontSize:18,fontWeight:700,color:T.text}}>{titles[page]}</div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={printDashboard} style={{display:"flex",alignItems:"center",gap:6,background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
+              <Download size={14}/> Exportar PDF
+            </button>
             <button onClick={()=>setPresentMode(true)} style={{display:"flex",alignItems:"center",gap:6,background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
               <Maximize2 size={14}/> Apresentação
             </button>
