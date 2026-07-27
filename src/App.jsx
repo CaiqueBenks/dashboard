@@ -1722,7 +1722,6 @@ export default function App() {
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
-    {section:"Em Breve",items:[{id:"__s1",label:"Financeiro",icon:DollarSign,disabled:true},{id:"__s2",label:"Estoque",icon:ShoppingCart,disabled:true}]},
   ];
   const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
