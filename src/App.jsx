@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie } from "recharts";
 import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X } from "lucide-react";
 
@@ -1722,7 +1722,7 @@ export default function App() {
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
-  ];
+    ];
   const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
