@@ -1722,6 +1722,7 @@ export default function App() {
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
+  ];
   const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
