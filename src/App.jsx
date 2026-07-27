@@ -217,26 +217,106 @@ function DeltaCard({label,curr,prev,color,T,inv=false}) {
   );
 }
 
-// ── DailyChart ───────────────────────────────────────────────
-function DailyChart({entries,T}) {
-  const [active,setActive]=useState(["faturamento","prevMes"]);
-  const toggle=(k)=>setActive(p=>p.includes(k)?p.filter(x=>x!==k):[...p,k]);
-  const data=entries.map(e=>({dia:toDisplay(e.date),faturamento:e.faturamento,atrasos:e.atrasos,vendas:e.vendas,prevMes:e.prevMes,prevProxMes:e.prevProxMes}));
-  const ttStyle={background:T.card,border:`1px solid ${T.border}`,borderRadius:8,color:T.text};
+// ── TrendBadge ───────────────────────────────────────────────
+function TrendBadge({ entries, T }) {
+  const trend = useMemo(() => {
+    const d = entries.filter(e => e.faturamento != null);
+    if (d.length < 4) return null;
+    const h = Math.max(2, Math.floor(d.length / 2));
+    const recent = d.slice(-h);
+    const older  = d.slice(Math.max(0, d.length - h * 2), d.length - h);
+    if (!older.length) return null;
+    const avgR = recent.reduce((s, e) => s + e.faturamento, 0) / recent.length;
+    const avgO = older.reduce((s, e) => s + e.faturamento, 0) / older.length;
+    const pct  = ((avgR - avgO) / avgO) * 100;
+    return { pct, up: pct >= 0 };
+  }, [entries]);
+  if (!trend) return null;
+  const c = trend.up ? "#10b981" : "#ef4444";
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 12px",
+      background:c+"18", border:`1px solid ${c}`, borderRadius:20 }}>
+      {trend.up ? <ArrowUpRight size={13} color={c}/> : <ArrowDownRight size={13} color={c}/>}
+      <span style={{ fontSize:12, color:c, fontWeight:600 }}>
+        {trend.up?"+":""}{trend.pct.toFixed(1)}% ritmo vs período anterior
+      </span>
+    </div>
+  );
+}
+
+// ── Top5Days ──────────────────────────────────────────────────
+function Top5Days({ entries, T }) {
+  const top5 = useMemo(() => (
+    [...entries].filter(e => e.faturamento != null)
+      .sort((a, b) => b.faturamento - a.faturamento).slice(0, 5)
+  ), [entries]);
+  if (top5.length === 0) return null;
+  const medals = ["🥇","🥈","🥉","4️⃣","5️⃣"];
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
-        <div style={{fontSize:14,fontWeight:600,color:T.text}}>Evolução por Dia</div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {KPI_OPTIONS.map(({key,label,color})=>{
-            const on=active.includes(key);
-            return (
-              <button key={key} onClick={()=>toggle(key)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",background:on?color+"25":"transparent",color:on?color:T.faint,border:`1.5px solid ${on?color:T.border}`}}>
-                <span style={{width:8,height:8,borderRadius:"50%",background:on?color:T.border,display:"inline-block",flexShrink:0}}/>{label}
-              </button>
-            );
-          })}
+      <div style={{ fontSize:14, fontWeight:600, color:T.text, marginBottom:12 }}>
+        🏆 Top 5 Melhores Dias do Período
+      </div>
+      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+        {top5.map((e, i) => (
+          <div key={e.id} style={{ display:"flex", alignItems:"center", gap:12,
+            padding:"10px 14px", background:T.card2, borderRadius:8,
+            border:`1px solid ${T.border}` }}>
+            <span style={{ fontSize:20, flexShrink:0 }}>{medals[i]}</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:T.text }}>{toDisplay(e.date)}</div>
+              {e.obs && <div style={{ fontSize:11, color:T.faint, fontStyle:"italic", marginTop:2 }}>{e.obs}</div>}
+            </div>
+            <div style={{ fontSize:15, fontWeight:700, color:"#3b82f6", flexShrink:0 }}>{fmtRS(e.faturamento)}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── DailyChart ───────────────────────────────────────────────
+function DailyChart({entries,T}) {
+  const [active, setActive] = useState(["faturamento","prevMes"]);
+  const [range,  setRange]  = useState(30);
+  const toggle = (k) => setActive(p => p.includes(k) ? p.filter(x=>x!==k) : [...p,k]);
+  const filtered = range === 0 ? entries : entries.slice(-range);
+  const data = filtered.map(e => ({
+    dia:toDisplay(e.date), faturamento:e.faturamento, atrasos:e.atrasos,
+    vendas:e.vendas, prevMes:e.prevMes, prevProxMes:e.prevProxMes,
+  }));
+  const ttStyle = {background:T.card, border:`1px solid ${T.border}`, borderRadius:8, color:T.text};
+  const RANGES  = [{l:"7d",v:7},{l:"15d",v:15},{l:"30d",v:30},{l:"Tudo",v:0}];
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
+        <div style={{ fontSize:14, fontWeight:600, color:T.text }}>Evolução por Dia</div>
+        <div style={{ display:"flex", gap:4 }}>
+          {RANGES.map(({l,v}) => (
+            <button key={v} onClick={() => setRange(v)} style={{
+              padding:"4px 10px", borderRadius:6, fontSize:12, cursor:"pointer",
+              background: range===v ? "#3b82f6" : "transparent",
+              color:      range===v ? "#fff"    : T.muted,
+              border:     `1px solid ${range===v ? "#3b82f6" : T.border}`,
+              transition: "all .15s",
+            }}>{l}</button>
+          ))}
         </div>
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+        {KPI_OPTIONS.map(({key,label,color}) => {
+          const on = active.includes(key);
+          return (
+            <button key={key} onClick={() => toggle(key)} style={{
+              display:"flex", alignItems:"center", gap:5, padding:"5px 12px",
+              borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer",
+              background: on?color+"25":"transparent", color:on?color:T.faint,
+              border:`1.5px solid ${on?color:T.border}`, transition:"all .15s",
+            }}>
+              <span style={{ width:8,height:8,borderRadius:"50%",background:on?color:T.border,display:"inline-block",flexShrink:0 }}/>{label}
+            </button>
+          );
+        })}
       </div>
       {active.length===0 ? (
         <div style={{textAlign:"center",padding:"32px 0",color:T.faint,fontSize:13}}>Selecione ao menos um KPI.</div>
@@ -892,8 +972,13 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
 
   return (
     <>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-        <div style={{color:T.muted,fontSize:14}}>{hasData?`Último lançamento: ${toDisplay(latest.date)}`:"Nenhum lançamento cadastrado"}</div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+          <div style={{ color:T.muted, fontSize:14 }}>
+            {hasData ? `Último lançamento: ${toDisplay(latest.date)}` : "Nenhum lançamento cadastrado"}
+          </div>
+          {hasData && <TrendBadge entries={entries} T={T}/>}
+        </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {entries.length>0&&(
             <div style={{display:"flex",gap:4}}>
