@@ -17,13 +17,34 @@ function useGlobalCSS() {
         from { opacity: 0; transform: translateY(10px) }
         to   { opacity: 1; transform: translateY(0) }
       }
+      @keyframes toastIn {
+        from { opacity: 0; transform: translateY(12px) scale(.95) }
+        to   { opacity: 1; transform: translateY(0) scale(1) }
+      }
+      @keyframes toastOut {
+        from { opacity: 1; transform: translateY(0) scale(1) }
+        to   { opacity: 0; transform: translateY(8px) scale(.95) }
+      }
+      @keyframes emptyPulse {
+        0%,100% { transform: scale(1); opacity: .85 }
+        50%     { transform: scale(1.05); opacity: 1 }
+      }
       .dg-lift {
-        transition: transform .18s ease, box-shadow .18s ease;
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
         cursor: default;
       }
       .dg-lift:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 28px rgba(0,0,0,.22);
+        transform: translateY(-4px) scale(1.012);
+        box-shadow: 0 14px 32px rgba(0,0,0,.26);
+      }
+      .dg-toast {
+        animation: toastIn .25s ease;
+      }
+      .dg-toast.dg-toast-leaving {
+        animation: toastOut .2s ease forwards;
+      }
+      .dg-empty-icon {
+        animation: emptyPulse 2.6s ease-in-out infinite;
       }
       .dg-page { animation: fadeUp .28s ease; }
       .dg-btn  { transition: opacity .15s, transform .12s; }
@@ -184,6 +205,8 @@ const exportCSV = (rows,headers,filename) => {
 };
 let _pdfCb=null;
 const exportPDF=(html,title)=>{ if(_pdfCb)_pdfCb(html,title); };
+let _toastCb=null;
+const toast=(msg,type="success")=>{ if(_toastCb)_toastCb(msg,type); };
 
 const printDashboard = () => {
   const style = document.createElement("style");
@@ -220,6 +243,28 @@ function PDFModal({content,title,onClose}) {
           srcDoc={`<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;padding:24px;font-size:13px;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #e2e8f0;padding:8px 10px;text-align:left}th{background:#f1f5f9;font-weight:600;font-size:12px}h2{font-size:18px;margin-bottom:4px}p{color:#64748b;font-size:12px;margin-bottom:12px}tr:nth-child(even){background:#f8fafc}</style></head><body>${content}</body></html>`}
         />
       </div>
+    </div>
+  );
+}
+
+// ── ToastContainer ───────────────────────────────────────────
+function ToastContainer({toasts}) {
+  const cfg={
+    success:{bg:"#10b981",icon:"✓"},
+    error:  {bg:"#ef4444",icon:"✕"},
+    info:   {bg:"#3b82f6",icon:"ℹ"},
+  };
+  return (
+    <div style={{position:"fixed",bottom:20,right:20,zIndex:100000,display:"flex",flexDirection:"column",gap:10,alignItems:"flex-end",pointerEvents:"none"}}>
+      {toasts.map(t=>{
+        const c=cfg[t.type]||cfg.success;
+        return (
+          <div key={t.id} className={`dg-toast${t.leaving?" dg-toast-leaving":""}`} style={{display:"flex",alignItems:"center",gap:10,background:"#1e293b",color:"#f1f5f9",border:`1px solid ${c.bg}55`,borderLeft:`4px solid ${c.bg}`,borderRadius:10,padding:"12px 16px",boxShadow:"0 12px 28px rgba(0,0,0,.35)",fontSize:13.5,fontWeight:500,maxWidth:320,pointerEvents:"auto"}}>
+            <span style={{background:c.bg,color:"#fff",borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0}}>{c.icon}</span>
+            {t.msg}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -900,7 +945,7 @@ function HomePage({T,onNavigate}) {
         <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>Acesso Rápido</div>
         <div className="dg-grid dg-grid-4" style={{display:"grid",gap:12}}>
           {quickLinks.map(({id,label,emoji,color,desc})=>(
-            <button key={id} onClick={()=>onNavigate(id)} style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:8,padding:16,background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,cursor:"pointer",textAlign:"left"}}>
+            <button key={id} onClick={()=>onNavigate(id)} className="dg-lift" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:8,padding:16,background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,cursor:"pointer",textAlign:"left"}}>
               <div style={{background:color+"20",borderRadius:8,padding:8,display:"flex",alignItems:"center",justifyContent:"center",width:34,height:34}}><span style={{fontSize:18,lineHeight:1}}>{emoji}</span></div>
               <div style={{fontSize:13,fontWeight:600,color:T.text}}>{label}</div>
               <div style={{fontSize:11,color:T.muted}}>{desc}</div>
@@ -950,13 +995,11 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   const [loading,    setLoading]    =useState(true);
   const [editId,     setEditId]     =useState(null);
   const [showHist,   setShowHist]   =useState(false);
-  const [saved,      setSaved]      =useState(false);
   const [showMetas,  setShowMetas]  =useState(false);
   // ── Metas por período: mapa {mesYYYY-MM: {faturamento,...}}, "default" = meta padrão ──
   const [metasByMonth,  setMetasByMonth]  =useState({});
   const [metaMonth,     setMetaMonth]     =useState(today().slice(0,7));
   const [metasForm,     setMetasForm]     =useState(EMPTY_METAS);
-  const [metasSaved,    setMetasSaved]    =useState(false);
   const [showFechar, setShowFechar] =useState(false);
   const [clearAfter, setClearAfter] =useState(true);
   // ── Feriados customizados ──
@@ -1006,7 +1049,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
     const updated={...metasByMonth,[key]:metasForm};
     setMetasByMonth(updated);
     try{await window.storage.set("diario_metas_by_month",JSON.stringify(updated));}catch(_){}
-    setMetasSaved(true);setTimeout(()=>setMetasSaved(false),2000);
+    toast(asDefault?"Meta padrão salva com sucesso!":`Meta de ${monthLabel(metaMonth+"-01")} salva com sucesso!`);
   };
 
   const persistHolidays=async(d)=>{try{await window.storage.set("custom_holidays",JSON.stringify(d));}catch(_){}};
@@ -1015,10 +1058,12 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
     const updated=[...holidays.filter(h=>h.date!==holForm.date),{date:holForm.date,desc:holForm.desc||"Feriado customizado"}].sort((a,b)=>a.date.localeCompare(b.date));
     setHolidays(updated);await persistHolidays(updated);
     setHolForm({date:"",desc:""});
+    toast("Feriado adicionado!");
   };
   const removeHoliday=async(date)=>{
     const updated=holidays.filter(h=>h.date!==date);
     setHolidays(updated);await persistHolidays(updated);
+    toast("Feriado removido.","info");
   };
 
   const saveEntry=async()=>{
@@ -1028,10 +1073,10 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
     updated=updated.sort((a,b)=>a.date.localeCompare(b.date));
     setEntries(updated);await persist(updated);
     setForm(initForm);setShowForm(false);setEditId(null);
-    setSaved(true);setTimeout(()=>setSaved(false),2000);
+    toast(editId?"Lançamento atualizado!":"Lançamento salvo com sucesso!");
   };
 
-  const deleteEntry=async(id)=>{const u=entries.filter(e=>e.id!==id);setEntries(u);await persist(u);};
+  const deleteEntry=async(id)=>{const u=entries.filter(e=>e.id!==id);setEntries(u);await persist(u);toast("Lançamento excluído.","info");};
   const startEdit=(e)=>{setForm({date:e.date,faturamento:e.faturamento??"",atrasos:e.atrasos??"",vendas:e.vendas??"",prevMes:e.prevMes??"",prevProxMes:e.prevProxMes??"",obs:e.obs||""});setEditId(e.id);setShowForm(true);setShowHist(false);setShowMetas(false);setShowFechar(false);setShowFeriados(false);};
   const closeAll=(which)=>{setShowForm(which==="form");setShowMetas(which==="metas");setShowHist(which==="hist");setShowFechar(which==="fechar");setShowFeriados(which==="feriados");if(which!=="form")setEditId(null);};
 
@@ -1049,6 +1094,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
     if(clearAfter){setEntries([]);await persist([]);}
     setShowFechar(false);
     if(onMonthClosed)onMonthClosed();
+    toast(`Mês de ${monthLabel(entries[0].date)} fechado com sucesso!`);
   };
 
   const doCSV=()=>exportCSV(entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento R$","Atrasos R$","Vendas R$","Prev.Mês R$","Prev.Próx.Mês R$","Obs"],"fechamento_diario.csv");
@@ -1145,7 +1191,6 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:12,color:T.faint}}>Atrasos: verde quando <strong style={{color:T.text}}>abaixo</strong> da meta.</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              {metasSaved&&<span style={{fontSize:13,color:"#10b981"}}>✓ Salvo!</span>}
               <button onClick={()=>saveMetas(true)} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>Salvar como Padrão</button>
               <button onClick={()=>saveMetas(false)} style={{display:"flex",alignItems:"center",gap:6,background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}><Save size={14}/> Salvar Meta de {monthLabel(metaMonth+"-01")}</button>
             </div>
@@ -1221,7 +1266,6 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{fontSize:12,color:T.faint}}>* Valores acumulados até a data selecionada</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              {saved&&<span style={{fontSize:13,color:"#10b981"}}>✓ Salvo!</span>}
               <button onClick={()=>{setShowForm(false);setEditId(null);}} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>Cancelar</button>
               <button onClick={saveEntry} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:600,fontSize:14}}><Save size={14}/>{editId?"Salvar Edição":"Salvar Lançamento"}</button>
             </div>
@@ -1299,10 +1343,10 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
       )}
 
       {!hasData&&!showForm&&(
-        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:48,textAlign:"center"}}>
-          <BarChart2 size={36} color={T.border} style={{margin:"0 auto 12px"}}/>
-          <div style={{color:T.muted,fontSize:15,marginBottom:8}}>Nenhum dado lançado ainda</div>
-          <div style={{color:T.faint,fontSize:13}}>Clique em <strong style={{color:"#60a5fa"}}>Lançar KPIs</strong> para começar</div>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:52,textAlign:"center"}}>
+          <div className="dg-empty-icon" style={{width:64,height:64,borderRadius:"50%",background:"#3b82f620",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30}}>📊</div>
+          <div style={{color:T.text,fontSize:16,fontWeight:600,marginBottom:6}}>Nenhum dado lançado ainda</div>
+          <div style={{color:T.faint,fontSize:13}}>Clique em <strong style={{color:"#60a5fa"}}>Lançar KPIs</strong> para começar a acompanhar seu mês</div>
         </div>
       )}
     </>
@@ -1315,11 +1359,9 @@ function FechamentoMensal({T}) {
   const [form,       setForm]       =useState(mkMF());
   const [showForm,   setShowForm]   =useState(false);
   const [loading,    setLoading]    =useState(true);
-  const [saved,      setSaved]      =useState(false);
   const [prodMetas,  setProdMetas]  =useState(EMPTY_PROD_METAS);
   const [prodMetasF, setProdMetasF] =useState(EMPTY_PROD_METAS);
   const [showPMetas, setShowPMetas] =useState(false);
-  const [pmSaved,    setPmSaved]    =useState(false);
   const [prefill,    setPrefill]    =useState(null);
 
   useEffect(()=>{
@@ -1341,13 +1383,13 @@ function FechamentoMensal({T}) {
     const rec={id:form.mes,label:monthLabel(form.mes),savedAt:today(),faturamentoRS:parseBRL(form.fRS),faturamentoKG:parseBRL(form.fKG),vendidoRS:parseBRL(form.vRS),vendidoKG:parseBRL(form.vKG),produtos:form.produtos.map(p=>({tipo:p.tipo,rs:parseBRL(p.rs),kg:parseBRL(p.kg)}))};
     const updated=[...records.filter(r=>r.id!==form.mes),rec].sort((a,b)=>a.id.localeCompare(b.id));
     setRecords(updated);await persist(updated);
-    setSaved(true);setTimeout(()=>setSaved(false),2000);
+    toast(`Dados de ${monthLabel(form.mes)} salvos com sucesso!`);
   };
 
   const saveProdMetas=async()=>{
     setProdMetas(prodMetasF);
     try{await window.storage.set("mensal_prod_metas",JSON.stringify(prodMetasF));}catch(_){}
-    setPmSaved(true);setTimeout(()=>setPmSaved(false),2000);
+    toast("Metas por produto salvas com sucesso!");
   };
 
   const applyPrefill=async()=>{
@@ -1363,7 +1405,7 @@ function FechamentoMensal({T}) {
     });
     setShowForm(true);
   };
-  const deleteRecord=async(id)=>{const u=records.filter(r=>r.id!==id);setRecords(u);await persist(u);};
+  const deleteRecord=async(id)=>{const u=records.filter(r=>r.id!==id);setRecords(u);await persist(u);toast("Registro mensal excluído.","info");};
 
   const current  =records.length>0?records[records.length-1]:null;
   const previous =records.length>1?records[records.length-2]:null;
@@ -1427,7 +1469,6 @@ function FechamentoMensal({T}) {
             ))}
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,alignItems:"center"}}>
-            {pmSaved&&<span style={{fontSize:13,color:"#10b981"}}>✓ Salvo!</span>}
             <button onClick={saveProdMetas} style={{display:"flex",alignItems:"center",gap:6,background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}><Save size={14}/> Salvar Metas</button>
           </div>
         </div>
@@ -1463,7 +1504,6 @@ function FechamentoMensal({T}) {
             </div>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,alignItems:"center"}}>
-            {saved&&<span style={{fontSize:13,color:"#10b981"}}>✓ Salvo!</span>}
             <button onClick={()=>{setShowForm(false);setForm(mkMF());}} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>Cancelar</button>
             <button onClick={saveRecord} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:600,fontSize:14}}><Save size={14}/> Salvar</button>
           </div>
@@ -1563,9 +1603,9 @@ function FechamentoMensal({T}) {
           </div>
         </>
       ):(
-        <div style={{...cSt,textAlign:"center",padding:48}}>
-          <TrendingUp size={36} color={T.border} style={{margin:"0 auto 12px"}}/>
-          <div style={{color:T.muted,fontSize:15,marginBottom:8}}>Nenhum dado mensal lançado</div>
+        <div style={{...cSt,textAlign:"center",padding:52}}>
+          <div className="dg-empty-icon" style={{width:64,height:64,borderRadius:"50%",background:"#10b98120",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30}}>📅</div>
+          <div style={{color:T.text,fontSize:16,fontWeight:600,marginBottom:6}}>Nenhum dado mensal lançado</div>
           <div style={{color:T.faint,fontSize:13}}>Clique em <strong style={{color:"#60a5fa"}}>Lançar Mês</strong> para começar</div>
         </div>
       )}
@@ -1702,9 +1742,9 @@ function MesesFechados({T,reloadKey}) {
     );
   }
   if(months.length===0)return(
-    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:56,textAlign:"center"}}>
-      <Archive size={40} color={T.border} style={{margin:"0 auto 14px"}}/>
-      <div style={{color:T.muted,fontSize:15,marginBottom:8}}>Nenhum mês fechado ainda</div>
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:60,textAlign:"center"}}>
+      <div className="dg-empty-icon" style={{width:72,height:72,borderRadius:"50%",background:"#8b5cf620",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px",fontSize:34}}>🗂️</div>
+      <div style={{color:T.text,fontSize:16,fontWeight:600,marginBottom:6}}>Nenhum mês fechado ainda</div>
       <div style={{color:T.faint,fontSize:13}}>Use <strong style={{color:"#10b981"}}>Fechar Mês</strong> no Fechamento Diário.</div>
     </div>
   );
@@ -1888,10 +1928,19 @@ export default function App() {
   const [presentMode,   setPresentMode]   =useState(false);
   const [pdfContent,    setPdfContent]    =useState(null);
   const [pdfTitle,      setPdfTitle]      =useState("");
+  const [toasts,        setToasts]        =useState([]);
   const T={...THEMES[dark?"dark":"light"],compact};
   useGlobalCSS();
 
   useEffect(()=>{ _pdfCb=(html,t)=>{setPdfContent(html);setPdfTitle(t);}; },[]);
+  useEffect(()=>{
+    _toastCb=(msg,type)=>{
+      const id=Date.now()+Math.random();
+      setToasts(p=>[...p,{id,msg,type}]);
+      setTimeout(()=>setToasts(p=>p.map(t=>t.id===id?{...t,leaving:true}:t)),2600);
+      setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),2900);
+    };
+  },[]);
 
   const goTo=(id)=>{setPage(id);setSidebarOpen(false);};
 
@@ -1912,6 +1961,7 @@ export default function App() {
     <div style={{display:"flex",minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'Inter',system-ui,sans-serif",transition:"background .2s,color .2s"}}>
       {presentMode&&<PresentMode onExit={()=>setPresentMode(false)}/>}
       {pdfContent&&<PDFModal content={pdfContent} title={pdfTitle} onClose={()=>setPdfContent(null)}/>}
+      <ToastContainer toasts={toasts}/>
 
       {/* Overlay (mobile only, closes sidebar) */}
       <div className={`dg-overlay${sidebarOpen?" dg-overlay-open":""}`} onClick={()=>setSidebarOpen(false)}/>
