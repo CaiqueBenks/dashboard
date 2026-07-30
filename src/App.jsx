@@ -57,6 +57,7 @@ function useGlobalCSS() {
           display: block; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 150;
         }
         .dg-topbar-label { display: none; }
+        .dg-present { padding: 16px !important; }
       }
       @media (max-width: 520px) {
         .dg-grid-2, .dg-grid-3, .dg-grid-4, .dg-grid-5, .dg-grid-6 { grid-template-columns: repeat(1,1fr); }
@@ -597,7 +598,7 @@ function DiasUteisProjecao({entries,metaFaturamento,T,extraHols=[]}) {
   const sem=calcSem(projecao,meta);
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   return (
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
+    <div className="dg-grid dg-grid-2" style={{display:"grid",gap:14,marginBottom:16}}>
       <div style={cSt}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
           <div>
@@ -684,14 +685,14 @@ function PresentMode({onExit}) {
   }
   const sem=calcSem(projecao,metaFat);
   const kpiDefs=[
-    {title:"Faturamento Acumulado",val:latest?.faturamento,color:"#3b82f6",Icon:DollarSign},
-    {title:"Atrasos",              val:latest?.atrasos,    color:"#ef4444",Icon:AlertTriangle},
-    {title:"Vendas Acumuladas",    val:latest?.vendas,     color:"#10b981",Icon:ShoppingCart},
-    {title:"Prev. Fat. Mês",       val:latest?.prevMes,    color:"#8b5cf6",Icon:TrendingUp},
-    {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,color:"#06b6d4",Icon:TrendingUp},
+    {title:"Faturamento Acumulado",val:latest?.faturamento,color:"#3b82f6",emoji:"💰"},
+    {title:"Atrasos",              val:latest?.atrasos,    color:"#ef4444",emoji:"⏰"},
+    {title:"Vendas Acumuladas",    val:latest?.vendas,     color:"#10b981",emoji:"🛒"},
+    {title:"Prev. Fat. Mês",       val:latest?.prevMes,    color:"#8b5cf6",emoji:"📈"},
+    {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,color:"#06b6d4",emoji:"🔮"},
   ];
   return (
-    <div style={{position:"fixed",inset:0,background:"#080e1a",zIndex:9999,display:"flex",flexDirection:"column",padding:36,overflowY:"auto"}}>
+    <div className="dg-present" style={{position:"fixed",inset:0,background:"#080e1a",zIndex:9999,display:"flex",flexDirection:"column",padding:36,overflowY:"auto"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
         <div>
           <div style={{fontSize:26,fontWeight:800,color:"#f1f5f9",letterSpacing:-0.5}}>Dashboard Gerencial</div>
@@ -706,18 +707,18 @@ function PresentMode({onExit}) {
       ):(
         <>
           <div className="dg-grid dg-grid-5" style={{display:"grid",gap:16,marginBottom:20}}>
-            {kpiDefs.map(({title,val,color,Icon})=>(
+            {kpiDefs.map(({title,val,color,emoji})=>(
               <div key={title} style={{background:"#1e293b",border:`1px solid #334155`,borderTop:`4px solid ${color}`,borderRadius:14,padding:24}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
                   <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",letterSpacing:.8}}>{title}</div>
-                  <div style={{background:color+"30",borderRadius:8,padding:7}}><Icon size={16} color={color}/></div>
+                  <div style={{background:color+"30",borderRadius:8,padding:7,display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30}}><span style={{fontSize:17,lineHeight:1}}>{emoji}</span></div>
                 </div>
                 <div style={{fontSize:26,fontWeight:800,color:val!=null?color:"#334155"}}>{val!=null?fmtRS(val):"—"}</div>
                 <div style={{fontSize:11,color:"#475569",marginTop:8}}>{latest?`Até ${toDisplay(latest.date)}`:"Sem dados"}</div>
               </div>
             ))}
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+          <div className="dg-grid dg-grid-3" style={{display:"grid",gap:16}}>
             <div style={{background:"#1e293b",border:"1px solid #334155",borderLeft:"4px solid #3b82f6",borderRadius:14,padding:24}}>
               <div style={{fontSize:10,color:"#64748b",textTransform:"uppercase",letterSpacing:.8,marginBottom:12}}>Projeção de Fechamento</div>
               <div style={{fontSize:30,fontWeight:800,color:"#3b82f6"}}>{projecao!=null?fmtRS(projecao):"—"}</div>
@@ -808,16 +809,16 @@ function HomePage({T,onNavigate}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
 
   const summaryCards=[
-    {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",Icon:DollarSign,   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
-    {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",Icon:AlertTriangle,sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true},
-    {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",Icon:ShoppingCart,  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
-    {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",Icon:Archive,        sub:"no histórico",isRS:false},
+    {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",emoji:"💰",   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
+    {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true},
+    {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",emoji:"🛒",  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
+    {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",emoji:"🗂️",        sub:"no histórico",isRS:false},
   ];
   const quickLinks=[
-    {id:"diario",    label:"Fechamento Diário", Icon:BarChart2,  color:"#3b82f6", desc:"Lançar e visualizar KPIs do dia"},
-    {id:"mensal",    label:"Fechamento Mensal", Icon:TrendingUp, color:"#10b981", desc:"Dados consolidados do mês"},
-    {id:"fechados",  label:"Meses Fechados",    Icon:Archive,    color:"#8b5cf6", desc:"Histórico de meses arquivados"},
-    {id:"biblioteca",label:"Biblioteca",        Icon:Package,    color:"#06b6d4", desc:"Ferramentas e tabelas técnicas"},
+    {id:"diario",    label:"Fechamento Diário", emoji:"📊",  color:"#3b82f6", desc:"Lançar e visualizar KPIs do dia"},
+    {id:"mensal",    label:"Fechamento Mensal", emoji:"📅", color:"#10b981", desc:"Dados consolidados do mês"},
+    {id:"fechados",  label:"Meses Fechados",    emoji:"🗄️",    color:"#8b5cf6", desc:"Histórico de meses arquivados"},
+    {id:"biblioteca",label:"Biblioteca",        emoji:"📚",    color:"#06b6d4", desc:"Ferramentas e tabelas técnicas"},
   ];
 
   return (
@@ -839,11 +840,11 @@ function HomePage({T,onNavigate}) {
       )}
 
       <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
-        {summaryCards.map(({label,val,color,Icon,sub,isRS})=>(
+        {summaryCards.map(({label,val,color,emoji,sub,isRS})=>(
           <div key={label} className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{label}</div>
-              <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0}}><Icon size={15} color={color}/></div>
+              <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
             <div style={{fontSize:22,fontWeight:700,color}}>{val!=null?(isRS?fmtRS(val):fmtN(val)):"—"}</div>
             <div style={{fontSize:12,color:T.muted,marginTop:4}}>{sub}</div>
@@ -861,7 +862,7 @@ function HomePage({T,onNavigate}) {
               {lastClosed&&<span style={{fontSize:12,fontWeight:400,color:T.muted,marginLeft:8}}>comparando com {lastClosed.label}</span>}
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div className="dg-grid dg-grid-2" style={{display:"grid",gap:12}}>
             {[
               {label:"Faturamento",curr:currFat,prev:prevFat,color:"#3b82f6",inv:false},
               {label:"Vendas",     curr:currVendas,prev:prevVendas,color:"#10b981",inv:false},
@@ -871,7 +872,7 @@ function HomePage({T,onNavigate}) {
               return (
                 <div key={label} style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:16}}>
                   <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>{label} — Acumulado vs Fechamento Anterior</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+                  <div className="dg-grid dg-grid-2" style={{display:"grid",gap:12,marginBottom:12}}>
                     <div>
                       <div style={{fontSize:10,color:T.faint,marginBottom:4}}>Mês Atual</div>
                       <div style={{fontSize:18,fontWeight:700,color}}>{curr!=null?fmtRS(curr):"—"}</div>
@@ -898,9 +899,9 @@ function HomePage({T,onNavigate}) {
       <div style={{...cSt,marginBottom:16}}>
         <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>Acesso Rápido</div>
         <div className="dg-grid dg-grid-4" style={{display:"grid",gap:12}}>
-          {quickLinks.map(({id,label,Icon,color,desc})=>(
+          {quickLinks.map(({id,label,emoji,color,desc})=>(
             <button key={id} onClick={()=>onNavigate(id)} style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:8,padding:16,background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,cursor:"pointer",textAlign:"left"}}>
-              <div style={{background:color+"20",borderRadius:8,padding:8}}><Icon size={18} color={color}/></div>
+              <div style={{background:color+"20",borderRadius:8,padding:8,display:"flex",alignItems:"center",justifyContent:"center",width:34,height:34}}><span style={{fontSize:18,lineHeight:1}}>{emoji}</span></div>
               <div style={{fontSize:13,fontWeight:600,color:T.text}}>{label}</div>
               <div style={{fontSize:11,color:T.muted}}>{desc}</div>
             </button>
@@ -1070,11 +1071,11 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   }
 
   const kpiDefs=[
-    {title:"Faturamento Acumulado",val:latest?.faturamento,p:pcts.fat,color:"#3b82f6",Icon:DollarSign,inv:false,showSem:true},
-    {title:"Atrasos",              val:latest?.atrasos,    p:pcts.atr,color:"#ef4444",Icon:AlertTriangle,inv:true, showSem:false},
-    {title:"Vendas Acumuladas",    val:latest?.vendas,     p:pcts.ven,color:"#10b981",Icon:ShoppingCart,inv:false,showSem:false},
-    {title:"Prev. Fat. Mês",       val:latest?.prevMes,    p:pcts.pm, color:"#8b5cf6",Icon:TrendingUp,  inv:false,showSem:false},
-    {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,p:pcts.ppx,color:"#06b6d4",Icon:TrendingUp,  inv:false,showSem:false},
+    {title:"Faturamento Acumulado",val:latest?.faturamento,p:pcts.fat,color:"#3b82f6",emoji:"💰",inv:false,showSem:true},
+    {title:"Atrasos",              val:latest?.atrasos,    p:pcts.atr,color:"#ef4444",emoji:"⏰",inv:true, showSem:false},
+    {title:"Vendas Acumuladas",    val:latest?.vendas,     p:pcts.ven,color:"#10b981",emoji:"🛒",inv:false,showSem:false},
+    {title:"Prev. Fat. Mês",       val:latest?.prevMes,    p:pcts.pm, color:"#8b5cf6",emoji:"📈",inv:false,showSem:false},
+    {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,p:pcts.ppx,color:"#06b6d4",emoji:"🔮",inv:false,showSem:false},
   ];
 
   if(loading)return (
@@ -1230,11 +1231,11 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
 
       {/* KPI Cards */}
       <div className="dg-grid dg-grid-5" style={{display:"grid",gap:14,marginBottom:16}}>
-        {kpiDefs.map(({title,val,p,color,Icon,inv,showSem})=>(
+        {kpiDefs.map(({title,val,p,color,emoji,inv,showSem})=>(
           <div key={title} className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:`3px solid ${color}`,minWidth:0,opacity:hasData?1:0.45}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
-              <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0}}><Icon size={15} color={color}/></div>
+              <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
             <div style={{fontSize:20,fontWeight:700,color:T.text,wordBreak:"break-word"}}>{val!=null?fmtRS(val):"—"}</div>
             <div style={{fontSize:11,color:T.muted,marginTop:2}}>{hasData?`Até ${toDisplay(latest.date)}`:"Sem dados"}</div>
@@ -1473,11 +1474,11 @@ function FechamentoMensal({T}) {
         <>
           {/* Summary KPI cards */}
           <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
-            {[{title:"Faturamento R$",value:fmtRS(current.faturamentoRS),sub:current.label,Icon:DollarSign,color:"#3b82f6"},{title:"Faturamento KG",value:fmtN(current.faturamentoKG)+" kg",sub:"Total expedido",Icon:Package,color:"#06b6d4"},{title:"Vendido R$",value:fmtRS(current.vendidoRS),sub:"Total pedidos",Icon:TrendingUp,color:"#10b981"},{title:"Vendido KG",value:fmtN(current.vendidoKG)+" kg",sub:"Pedidos em peso",Icon:Package,color:"#8b5cf6"}].map(({title,value,sub,Icon,color})=>(
+            {[{title:"Faturamento R$",value:fmtRS(current.faturamentoRS),sub:current.label,emoji:"💵",color:"#3b82f6"},{title:"Faturamento KG",value:fmtN(current.faturamentoKG)+" kg",sub:"Total expedido",emoji:"⚖️",color:"#06b6d4"},{title:"Vendido R$",value:fmtRS(current.vendidoRS),sub:"Total pedidos",emoji:"🧾",color:"#10b981"},{title:"Vendido KG",value:fmtN(current.vendidoKG)+" kg",sub:"Pedidos em peso",emoji:"📦",color:"#8b5cf6"}].map(({title,value,sub,emoji,color})=>(
               <div key={title} className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
-                  <div style={{background:color+"20",borderRadius:8,padding:7}}><Icon size={15} color={color}/></div>
+                  <div style={{background:color+"20",borderRadius:8,padding:7,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
                 </div>
                 <div style={{fontSize:22,fontWeight:700,color:T.text}}>{value}</div>
                 <div style={{fontSize:12,color:T.muted,marginTop:4}}>{sub}</div>
@@ -1717,7 +1718,7 @@ function MesesFechados({T,reloadKey}) {
               <div><div style={{fontSize:20,fontWeight:700,color:T.text}}>{m.label}</div><div style={{fontSize:11,color:T.muted,marginTop:2}}>Fechado em {toDisplay(m.closedAt)} · {m.entries.length} dias</div></div>
               <div style={{background:"#10b98120",borderRadius:8,padding:7}}><Archive size={15} color="#10b981"/></div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+            <div className="dg-grid dg-grid-2" style={{display:"grid",gap:8,marginBottom:14}}>
               {[{label:"Faturamento",val:m.summary.faturamento,color:"#3b82f6"},{label:"Vendas",val:m.summary.vendas,color:"#10b981"},{label:"Atrasos",val:m.summary.atrasos,color:"#ef4444"},{label:"Prev. Próx.",val:m.summary.prevProxMes,color:"#06b6d4"}].map(({label,val,color})=>(
                 <div key={label} style={{background:T.card2,borderRadius:8,padding:"8px 10px"}}>
                   <div style={{fontSize:10,color:T.faint,marginBottom:3}}>{label}</div>
@@ -1902,6 +1903,7 @@ export default function App() {
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
+    {section:"Em Breve",items:[{id:"__s1",label:"Financeiro",icon:DollarSign,disabled:true},{id:"__s2",label:"Estoque",icon:ShoppingCart,disabled:true}]},
   ];
   const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
