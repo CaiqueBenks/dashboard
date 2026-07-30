@@ -28,6 +28,40 @@ function useGlobalCSS() {
       .dg-page { animation: fadeUp .28s ease; }
       .dg-btn  { transition: opacity .15s, transform .12s; }
       .dg-btn:active { transform: scale(.96); }
+
+      /* ── Responsive grids ─────────────────────────────── */
+      .dg-grid-2 { grid-template-columns: repeat(2,1fr); }
+      .dg-grid-3 { grid-template-columns: repeat(3,1fr); }
+      .dg-grid-4 { grid-template-columns: repeat(4,1fr); }
+      .dg-grid-5 { grid-template-columns: repeat(5,1fr); }
+      .dg-grid-6 { grid-template-columns: repeat(6,1fr); }
+
+      /* ── Sidebar / hamburger (mobile) ─────────────────── */
+      .dg-hamburger { display: none; }
+      .dg-overlay   { display: none; }
+
+      @media (max-width: 1024px) {
+        .dg-grid-4, .dg-grid-5, .dg-grid-6 { grid-template-columns: repeat(3,1fr); }
+      }
+      @media (max-width: 768px) {
+        .dg-grid-3, .dg-grid-4, .dg-grid-5, .dg-grid-6 { grid-template-columns: repeat(2,1fr); }
+        .dg-hamburger { display: flex !important; }
+        .dg-sidebar {
+          position: fixed; left: 0; top: 0; height: 100vh; z-index: 200;
+          transform: translateX(-100%);
+          transition: transform .22s ease;
+        }
+        .dg-sidebar.dg-sidebar-open { transform: translateX(0); box-shadow: 0 0 32px rgba(0,0,0,.4); }
+        .dg-main { margin-left: 0 !important; }
+        .dg-overlay.dg-overlay-open {
+          display: block; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 150;
+        }
+        .dg-topbar-label { display: none; }
+      }
+      @media (max-width: 520px) {
+        .dg-grid-2, .dg-grid-3, .dg-grid-4, .dg-grid-5, .dg-grid-6 { grid-template-columns: repeat(1,1fr); }
+      }
+
       @media print {
         .no-print { display: none !important; }
         .dg-main  { margin-left: 0 !important; }
@@ -548,11 +582,11 @@ function ProductRanking({current,previous,prodMetas,T}) {
 }
 
 // ── DiasUteisProjecao ────────────────────────────────────────
-function DiasUteisProjecao({entries,metaFaturamento,T}) {
+function DiasUteisProjecao({entries,metaFaturamento,T,extraHols=[]}) {
   if(entries.length===0)return null;
   const latest=entries[entries.length-1];
   const d=new Date((latest.date||today())+"T12:00:00");
-  const wd=getWDInfo(d.getFullYear(),d.getMonth()+1);
+  const wd=getWDInfo(d.getFullYear(),d.getMonth()+1,extraHols);
   const fat=latest.faturamento;
   const meta=parseBRL(metaFaturamento);
   let dailyAvg=null,projecao=null,neededPerDay=null;
@@ -561,7 +595,7 @@ function DiasUteisProjecao({entries,metaFaturamento,T}) {
   const pctProj=meta&&projecao?(projecao/meta)*100:null;
   const projColor=pctProj==null?"#64748b":pctProj>=100?"#10b981":pctProj>=80?"#f59e0b":"#ef4444";
   const sem=calcSem(projecao,meta);
-  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   return (
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:16}}>
       <div style={cSt}>
@@ -620,12 +654,17 @@ function DiasUteisProjecao({entries,metaFaturamento,T}) {
 // ── PresentMode ──────────────────────────────────────────────
 function PresentMode({onExit}) {
   const [entries,setEntries]=useState([]);
-  const [metas,  setMetas]  =useState(EMPTY_METAS);
+  const [metasByMonth,setMetasByMonth]=useState({});
+  const [holidays,setHolidays]=useState([]);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
     (async()=>{
       try{const r=await window.storage.get("diario_entries");if(r)setEntries(JSON.parse(r.value));}catch(_){}
-      try{const m=await window.storage.get("diario_metas");if(m)setMetas(JSON.parse(m.value));}catch(_){}
+      let mbm={};
+      try{const r=await window.storage.get("diario_metas_by_month");if(r)mbm=JSON.parse(r.value);}catch(_){}
+      if(Object.keys(mbm).length===0){try{const m=await window.storage.get("diario_metas");if(m)mbm={default:JSON.parse(m.value)};}catch(_){}}
+      setMetasByMonth(mbm);
+      try{const h=await window.storage.get("custom_holidays");if(h)setHolidays(JSON.parse(h.value));}catch(_){}
       setLoading(false);
     })();
     const fn=(e)=>{if(e.key==="Escape")onExit();};
@@ -633,11 +672,14 @@ function PresentMode({onExit}) {
     return()=>window.removeEventListener("keydown",fn);
   },[]);
   const latest=entries.length>0?entries[entries.length-1]:null;
+  const activeMonth=latest?latest.date.slice(0,7):today().slice(0,7);
+  const metas=metasByMonth[activeMonth]||metasByMonth.default||EMPTY_METAS;
+  const extraHols=holidays.map(h=>h.date);
   const metaFat=parseBRL(metas.faturamento);
   let projecao=null,wd=null;
   if(latest?.faturamento&&latest?.date){
     const dd=new Date(latest.date+"T12:00:00");
-    wd=getWDInfo(dd.getFullYear(),dd.getMonth()+1);
+    wd=getWDInfo(dd.getFullYear(),dd.getMonth()+1,extraHols);
     if(wd.passed>0)projecao=(latest.faturamento/wd.passed)*wd.total;
   }
   const sem=calcSem(projecao,metaFat);
@@ -663,7 +705,7 @@ function PresentMode({onExit}) {
         <div style={{color:"#64748b",textAlign:"center",marginTop:80,fontSize:16}}>Carregando...</div>
       ):(
         <>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:16,marginBottom:20}}>
+          <div className="dg-grid dg-grid-5" style={{display:"grid",gap:16,marginBottom:20}}>
             {kpiDefs.map(({title,val,color,Icon})=>(
               <div key={title} style={{background:"#1e293b",border:`1px solid #334155`,borderTop:`4px solid ${color}`,borderRadius:14,padding:24}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
@@ -730,20 +772,32 @@ function PresentMode({onExit}) {
 // ── HomePage ─────────────────────────────────────────────────
 function HomePage({T,onNavigate}) {
   const [daily,  setDaily]  =useState([]);
-  const [metas,  setMetas]  =useState(EMPTY_METAS);
+  const [metasByMonth,setMetasByMonth]=useState({});
   const [closed, setClosed] =useState([]);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
     (async()=>{
       try{const r=await window.storage.get("diario_entries");if(r)setDaily(JSON.parse(r.value));}catch(_){}
-      try{const r=await window.storage.get("diario_metas");if(r)setMetas(JSON.parse(r.value));}catch(_){}
+      let mbm={};
+      try{const r=await window.storage.get("diario_metas_by_month");if(r)mbm=JSON.parse(r.value);}catch(_){}
+      if(Object.keys(mbm).length===0){try{const m=await window.storage.get("diario_metas");if(m)mbm={default:JSON.parse(m.value)};}catch(_){}}
+      setMetasByMonth(mbm);
       try{const r=await window.storage.get("closed_months");if(r)setClosed(JSON.parse(r.value));}catch(_){}
       setLoading(false);
     })();
   },[]);
-  if(loading)return <div style={{color:T.muted,padding:40,textAlign:"center"}}>Carregando...</div>;
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
+        {Array.from({length:4}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+      <div style={{marginBottom:16}}><SkeletonChart T={T}/></div>
+    </div>
+  );
 
   const latest=daily.length>0?daily[daily.length-1]:null;
+  const activeMonth=latest?latest.date.slice(0,7):today().slice(0,7);
+  const metas=metasByMonth[activeMonth]||metasByMonth.default||EMPTY_METAS;
   const metaAtr=parseBRL(metas.atrasos);
   const atrasoAlt=metaAtr!=null&&latest?.atrasos!=null&&latest.atrasos>metaAtr;
   const lastClosed=closed.length>0?closed[closed.length-1]:null;
@@ -751,7 +805,7 @@ function HomePage({T,onNavigate}) {
   const prevVendas=lastClosed?.summary?.vendas;
   const currFat=latest?.faturamento;
   const currVendas=latest?.vendas;
-  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
 
   const summaryCards=[
     {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",Icon:DollarSign,   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
@@ -784,9 +838,9 @@ function HomePage({T,onNavigate}) {
         </div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
+      <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
         {summaryCards.map(({label,val,color,Icon,sub,isRS})=>(
-          <div key={label} style={{...cSt,borderTop:`3px solid ${color}`}}>
+          <div key={label} className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{label}</div>
               <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0}}><Icon size={15} color={color}/></div>
@@ -843,7 +897,7 @@ function HomePage({T,onNavigate}) {
 
       <div style={{...cSt,marginBottom:16}}>
         <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>Acesso Rápido</div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+        <div className="dg-grid dg-grid-4" style={{display:"grid",gap:12}}>
           {quickLinks.map(({id,label,Icon,color,desc})=>(
             <button key={id} onClick={()=>onNavigate(id)} style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:8,padding:16,background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,cursor:"pointer",textAlign:"left"}}>
               <div style={{background:color+"20",borderRadius:8,padding:8}}><Icon size={18} color={color}/></div>
@@ -897,19 +951,42 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   const [showHist,   setShowHist]   =useState(false);
   const [saved,      setSaved]      =useState(false);
   const [showMetas,  setShowMetas]  =useState(false);
-  const [metas,      setMetas]      =useState(EMPTY_METAS);
-  const [metasForm,  setMetasForm]  =useState(EMPTY_METAS);
-  const [metasSaved, setMetasSaved] =useState(false);
+  // ── Metas por período: mapa {mesYYYY-MM: {faturamento,...}}, "default" = meta padrão ──
+  const [metasByMonth,  setMetasByMonth]  =useState({});
+  const [metaMonth,     setMetaMonth]     =useState(today().slice(0,7));
+  const [metasForm,     setMetasForm]     =useState(EMPTY_METAS);
+  const [metasSaved,    setMetasSaved]    =useState(false);
   const [showFechar, setShowFechar] =useState(false);
   const [clearAfter, setClearAfter] =useState(true);
+  // ── Feriados customizados ──
+  const [holidays,     setHolidays]     =useState([]); // [{date,desc}]
+  const [showFeriados, setShowFeriados] =useState(false);
+  const [holForm,       setHolForm]      =useState({date:"",desc:""});
 
   useEffect(()=>{
     (async()=>{
       try{const r=await window.storage.get("diario_entries");if(r)setEntries(JSON.parse(r.value));}catch(_){}
-      try{const m=await window.storage.get("diario_metas");if(m){const v=JSON.parse(m.value);setMetas(v);setMetasForm(v);}}catch(_){}
+      let mbm={};
+      try{const r=await window.storage.get("diario_metas_by_month");if(r)mbm=JSON.parse(r.value);}catch(_){}
+      if(Object.keys(mbm).length===0){
+        // migração: metas antigas (globais) viram a meta "default"
+        try{const m=await window.storage.get("diario_metas");if(m){const v=JSON.parse(m.value);mbm={default:v};}}catch(_){}
+      }
+      setMetasByMonth(mbm);
+      try{const h=await window.storage.get("custom_holidays");if(h)setHolidays(JSON.parse(h.value));}catch(_){}
       setLoading(false);
     })();
   },[]);
+
+  // Meta efetiva do mês do último lançamento (cai para "default" se não houver meta específica)
+  const activeMonth = entries.length>0 ? entries[entries.length-1].date.slice(0,7) : metaMonth;
+  const metas = metasByMonth[activeMonth] || metasByMonth.default || EMPTY_METAS;
+  const extraHols = holidays.map(h=>h.date);
+
+  useEffect(()=>{
+    // Sincroniza o formulário de metas com o mês selecionado para edição
+    setMetasForm(metasByMonth[metaMonth] || metasByMonth.default || EMPTY_METAS);
+  },[metaMonth,metasByMonth]);
 
   useEffect(()=>{
     if(entries.length>0&&metas.atrasos){
@@ -923,10 +1000,24 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   const setField =(k)=>(e)=>setForm(p=>({...p,[k]:e.target.value}));
   const setMetaF =(k)=>(e)=>setMetasForm(p=>({...p,[k]:e.target.value}));
 
-  const saveMetas=async()=>{
-    setMetas(metasForm);
-    try{await window.storage.set("diario_metas",JSON.stringify(metasForm));}catch(_){}
+  const saveMetas=async(asDefault=false)=>{
+    const key=asDefault?"default":metaMonth;
+    const updated={...metasByMonth,[key]:metasForm};
+    setMetasByMonth(updated);
+    try{await window.storage.set("diario_metas_by_month",JSON.stringify(updated));}catch(_){}
     setMetasSaved(true);setTimeout(()=>setMetasSaved(false),2000);
+  };
+
+  const persistHolidays=async(d)=>{try{await window.storage.set("custom_holidays",JSON.stringify(d));}catch(_){}};
+  const addHoliday=async()=>{
+    if(!holForm.date)return;
+    const updated=[...holidays.filter(h=>h.date!==holForm.date),{date:holForm.date,desc:holForm.desc||"Feriado customizado"}].sort((a,b)=>a.date.localeCompare(b.date));
+    setHolidays(updated);await persistHolidays(updated);
+    setHolForm({date:"",desc:""});
+  };
+  const removeHoliday=async(date)=>{
+    const updated=holidays.filter(h=>h.date!==date);
+    setHolidays(updated);await persistHolidays(updated);
   };
 
   const saveEntry=async()=>{
@@ -940,8 +1031,8 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   };
 
   const deleteEntry=async(id)=>{const u=entries.filter(e=>e.id!==id);setEntries(u);await persist(u);};
-  const startEdit=(e)=>{setForm({date:e.date,faturamento:e.faturamento??"",atrasos:e.atrasos??"",vendas:e.vendas??"",prevMes:e.prevMes??"",prevProxMes:e.prevProxMes??"",obs:e.obs||""});setEditId(e.id);setShowForm(true);setShowHist(false);setShowMetas(false);setShowFechar(false);};
-  const closeAll=(which)=>{setShowForm(which==="form");setShowMetas(which==="metas");setShowHist(which==="hist");setShowFechar(which==="fechar");if(which!=="form")setEditId(null);};
+  const startEdit=(e)=>{setForm({date:e.date,faturamento:e.faturamento??"",atrasos:e.atrasos??"",vendas:e.vendas??"",prevMes:e.prevMes??"",prevProxMes:e.prevProxMes??"",obs:e.obs||""});setEditId(e.id);setShowForm(true);setShowHist(false);setShowMetas(false);setShowFechar(false);setShowFeriados(false);};
+  const closeAll=(which)=>{setShowForm(which==="form");setShowMetas(which==="metas");setShowHist(which==="hist");setShowFechar(which==="fechar");setShowFeriados(which==="feriados");if(which!=="form")setEditId(null);};
 
   const confirmarFechamento=async()=>{
     if(entries.length===0)return;
@@ -962,7 +1053,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   const doCSV=()=>exportCSV(entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento R$","Atrasos R$","Vendas R$","Prev.Mês R$","Prev.Próx.Mês R$","Obs"],"fechamento_diario.csv");
   const doPDF=()=>exportPDF(`<h2>Fechamento Diário</h2><p>Gerado em ${new Date().toLocaleDateString("pt-BR")}</p><table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Observações</th></tr></thead><tbody>${entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,"Fechamento Diário");
 
-  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const iSt={background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",color:T.text,fontSize:14,width:"100%",boxSizing:"border-box",outline:"none"};
   const lSt={fontSize:12,color:T.sub,marginBottom:4,display:"block"};
   const latest=entries.length>0?entries[entries.length-1]:null;
@@ -974,7 +1065,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
   let semaforo=null;
   if(latest?.faturamento&&latest?.date){
     const dd=new Date(latest.date+"T12:00:00");
-    const wdInfo=getWDInfo(dd.getFullYear(),dd.getMonth()+1);
+    const wdInfo=getWDInfo(dd.getFullYear(),dd.getMonth()+1,extraHols);
     if(wdInfo.passed>0){const proj=(latest.faturamento/wdInfo.passed)*wdInfo.total;semaforo=calcSem(proj,parseBRL(metas.faturamento));}
   }
 
@@ -986,7 +1077,15 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
     {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,p:pcts.ppx,color:"#06b6d4",Icon:TrendingUp,  inv:false,showSem:false},
   ];
 
-  if(loading)return <div style={{color:T.muted,padding:40,textAlign:"center"}}>Carregando...</div>;
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-5" style={{display:"grid",gap:14,marginBottom:16}}>
+        {Array.from({length:5}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+      <div style={{marginBottom:16}}><SkeletonChart T={T}/></div>
+      <div style={{marginBottom:16}}><SkeletonChart T={T}/></div>
+    </div>
+  );
 
   return (
     <>
@@ -1004,7 +1103,8 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
               <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
             </div>
           )}
-          <button onClick={()=>closeAll(showMetas?"":"metas")} style={{display:"flex",alignItems:"center",gap:6,background:showMetas?"#f59e0b":"#f59e0b20",color:showMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Configurar Metas</button>
+          <button onClick={()=>closeAll(showMetas?"":"metas")} style={{display:"flex",alignItems:"center",gap:6,background:showMetas?"#f59e0b":"#f59e0b20",color:showMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Período</button>
+          <button onClick={()=>closeAll(showFeriados?"":"feriados")} style={{display:"flex",alignItems:"center",gap:6,background:showFeriados?"#8b5cf6":"#8b5cf620",color:showFeriados?"#fff":"#8b5cf6",border:"1px solid #8b5cf6",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}><Calendar size={15}/> Feriados</button>
           {entries.length>0&&(
             <>
               <button onClick={()=>closeAll(showHist?"":"hist")} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>
@@ -1023,20 +1123,59 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
 
       {showMetas&&(
         <div style={{...cSt,borderTop:"3px solid #f59e0b",marginBottom:16}}>
-          <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>⚙ Configuração de Metas</div>
-          <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Defina as metas em R$ para cada KPI.</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:14}}>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>⚙ Metas por Período</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Configure metas específicas para cada mês, ou salve como meta padrão para meses sem configuração própria.</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+            <div style={{minWidth:160}}>
+              <label style={lSt}>Mês de referência da meta</label>
+              <input type="month" style={iSt} value={metaMonth} onChange={e=>setMetaMonth(e.target.value)}/>
+            </div>
+            <div style={{fontSize:12,color:T.faint,paddingBottom:10}}>
+              {metasByMonth[metaMonth]
+                ? <span style={{color:"#10b981"}}>✓ Este mês tem meta específica configurada.</span>
+                : <span>Sem meta específica — usando a <strong style={{color:T.text}}>meta padrão</strong> {Object.keys(metasByMonth).length?"":"(ainda não definida)"}.</span>}
+            </div>
+          </div>
+          <div className="dg-grid dg-grid-5" style={{display:"grid",gap:12,marginBottom:14}}>
             {[{k:"faturamento",label:"Faturamento"},{k:"atrasos",label:"Atrasos"},{k:"vendas",label:"Vendas"},{k:"prevMes",label:"Prev. Mês"},{k:"prevProxMes",label:"Prev. Próx. Mês"}].map(({k,label})=>(
               <div key={k}><label style={lSt}>{label} (R$)</label><input style={iSt} value={metasForm[k]} onChange={setMetaF(k)} placeholder="Ex: 3200000"/></div>
             ))}
           </div>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:12,color:T.faint}}>Atrasos: verde quando <strong style={{color:T.text}}>abaixo</strong> da meta.</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               {metasSaved&&<span style={{fontSize:13,color:"#10b981"}}>✓ Salvo!</span>}
-              <button onClick={saveMetas} style={{display:"flex",alignItems:"center",gap:6,background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}><Save size={14}/> Salvar Metas</button>
+              <button onClick={()=>saveMetas(true)} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>Salvar como Padrão</button>
+              <button onClick={()=>saveMetas(false)} style={{display:"flex",alignItems:"center",gap:6,background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}><Save size={14}/> Salvar Meta de {monthLabel(metaMonth+"-01")}</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {showFeriados&&(
+        <div style={{...cSt,borderTop:"3px solid #8b5cf6",marginBottom:16}}>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>📅 Feriados Customizados</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Além dos feriados nacionais já considerados automaticamente, adicione feriados estaduais, municipais ou pontos facultativos da empresa — eles serão descontados dos dias úteis nas projeções.</div>
+          <div style={{display:"flex",gap:10,alignItems:"flex-end",marginBottom:16,flexWrap:"wrap"}}>
+            <div><label style={lSt}>Data</label><input type="date" style={iSt} value={holForm.date} onChange={e=>setHolForm(p=>({...p,date:e.target.value}))}/></div>
+            <div style={{flex:1,minWidth:160}}><label style={lSt}>Descrição</label><input style={iSt} value={holForm.desc} onChange={e=>setHolForm(p=>({...p,desc:e.target.value}))} placeholder="Ex: Aniversário da cidade"/></div>
+            <button onClick={addHoliday} style={{display:"flex",alignItems:"center",gap:6,background:"#8b5cf6",color:"#fff",border:"none",borderRadius:8,padding:"10px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}><Plus size={15}/> Adicionar</button>
+          </div>
+          {holidays.length===0 ? (
+            <div style={{fontSize:13,color:T.faint,textAlign:"center",padding:"16px 0"}}>Nenhum feriado customizado cadastrado.</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {holidays.map(h=>(
+                <div key={h.date} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:T.card2,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:13,fontWeight:600,color:"#a78bfa"}}>{toDisplay(h.date)}</span>
+                    <span style={{fontSize:13,color:T.sub}}>{h.desc}</span>
+                  </div>
+                  <button onClick={()=>removeHoliday(h.date)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1046,7 +1185,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
           <div style={{fontSize:13,color:T.muted,marginBottom:16}}>Irá arquivar <strong style={{color:T.text}}>{entries.length} lançamento(s)</strong> em <strong style={{color:"#10b981"}}>Meses Fechados</strong> e disponibilizar os dados para o Fechamento Mensal.</div>
           <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:16}}>
             <div style={{fontSize:12,color:T.muted,marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>Resumo do Período</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12}}>
               {[{label:"Período",value:`${toDisplay(entries[0].date)} → ${toDisplay(entries[entries.length-1].date)}`},{label:"Faturamento Final",value:fmtRS(latest?.faturamento)},{label:"Vendas Finais",value:fmtRS(latest?.vendas)},{label:"Atrasos Finais",value:fmtRS(latest?.atrasos)},{label:"Prev. Fat. Mês",value:fmtRS(latest?.prevMes)},{label:"Prev. Próx. Mês",value:fmtRS(latest?.prevProxMes)}].map(({label,value})=>(
                 <div key={label}><div style={{fontSize:11,color:T.muted,marginBottom:3}}>{label}</div><div style={{fontSize:14,fontWeight:600,color:T.text}}>{value}</div></div>
               ))}
@@ -1066,7 +1205,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
       {showForm&&(
         <div style={{...cSt,borderTop:"3px solid #3b82f6",marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:600,marginBottom:16,color:T.text}}>{editId?"Editar Lançamento":"Novo Lançamento — KPIs Acumulados"}</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:12}}>
+          <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12,marginBottom:12}}>
             <div><label style={lSt}>Data *</label><input type="date" style={iSt} value={form.date} onChange={setField("date")}/></div>
             <div><label style={lSt}>Faturamento Acumulado (R$)</label><input style={iSt} value={form.faturamento} onChange={setField("faturamento")} placeholder="Ex: 287450,00"/></div>
             <div><label style={lSt}>Atrasos (R$)</label><input style={iSt} value={form.atrasos} onChange={setField("atrasos")} placeholder="Ex: 45200,00"/></div>
@@ -1090,9 +1229,9 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
       )}
 
       {/* KPI Cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:16}}>
+      <div className="dg-grid dg-grid-5" style={{display:"grid",gap:14,marginBottom:16}}>
         {kpiDefs.map(({title,val,p,color,Icon,inv,showSem})=>(
-          <div key={title} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20,borderTop:`3px solid ${color}`,minWidth:0,opacity:hasData?1:0.45}}>
+          <div key={title} className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:`3px solid ${color}`,minWidth:0,opacity:hasData?1:0.45}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
               <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0}}><Icon size={15} color={color}/></div>
@@ -1110,7 +1249,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
         ))}
       </div>
 
-      {hasData&&<DiasUteisProjecao entries={entries} metaFaturamento={metas.faturamento} T={T}/>}
+      {hasData&&<DiasUteisProjecao entries={entries} metaFaturamento={metas.faturamento} T={T} extraHols={extraHols}/>}
 
       {entries.length>0&&(
         <div style={{...cSt,marginBottom:16}}>
@@ -1228,7 +1367,7 @@ function FechamentoMensal({T}) {
   const current  =records.length>0?records[records.length-1]:null;
   const previous =records.length>1?records[records.length-2]:null;
   const histData =records.slice(-8).map(r=>({mes:r.label,fat:r.faturamentoRS,vendido:r.vendidoRS}));
-  const cSt      ={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
+  const cSt      ={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const iSt      ={background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px",color:T.text,fontSize:13,width:"100%",boxSizing:"border-box",outline:"none"};
   const lSt      ={fontSize:12,color:T.sub,marginBottom:4,display:"block"};
   const ttStyle  ={background:T.card,border:`1px solid ${T.border}`,borderRadius:8,color:T.text};
@@ -1236,7 +1375,14 @@ function FechamentoMensal({T}) {
   const doCSV=()=>exportCSV(records.map(r=>[r.label,r.faturamentoRS??'',r.faturamentoKG??'',r.vendidoRS??'',r.vendidoKG??'']),["Mês","Faturamento R$","Faturamento KG","Vendido R$","Vendido KG"],"fechamento_mensal.csv");
   const doPDF=()=>exportPDF(`<h2>Fechamento Mensal</h2><p>Gerado em ${new Date().toLocaleDateString("pt-BR")}</p><table><thead><tr><th>Mês</th><th>Fat. R$</th><th>Fat. KG</th><th>Vendido R$</th><th>Vendido KG</th></tr></thead><tbody>${records.map(r=>`<tr><td>${r.label}</td><td>${fmtRS(r.faturamentoRS)}</td><td>${fmtN(r.faturamentoKG)} kg</td><td>${fmtRS(r.vendidoRS)}</td><td>${fmtN(r.vendidoKG)} kg</td></tr>`).join('')}</tbody></table>`,"Fechamento Mensal");
 
-  if(loading)return <div style={{color:T.muted,padding:40,textAlign:"center"}}>Carregando...</div>;
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
+        {Array.from({length:4}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+      <div style={{marginBottom:16}}><SkeletonChart T={T}/></div>
+    </div>
+  );
 
   return (
     <>
@@ -1274,7 +1420,7 @@ function FechamentoMensal({T}) {
         <div style={{...cSt,borderTop:"3px solid #f59e0b",marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>⚙ Metas por Produto (R$)</div>
           <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Configure a meta de faturamento individual para cada tipo de produto.</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:12,marginBottom:14}}>
+          <div className="dg-grid dg-grid-6" style={{display:"grid",gap:12,marginBottom:14}}>
             {TIPOS.map(t=>(
               <div key={t}><label style={lSt}>{t} (R$)</label><input style={iSt} value={prodMetasF[t]} onChange={setPMeta(t)} placeholder="Ex: 850000"/></div>
             ))}
@@ -1290,7 +1436,7 @@ function FechamentoMensal({T}) {
       {showForm&&(
         <div style={{...cSt,borderTop:"3px solid #3b82f6",marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:600,marginBottom:16,color:T.text}}>Lançamento Mensal</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:16}}>
+          <div className="dg-grid dg-grid-5" style={{display:"grid",gap:12,marginBottom:16}}>
             <div><label style={lSt}>Mês de Referência *</label><input type="month" style={iSt} value={form.mes} onChange={setField("mes")}/></div>
             <div><label style={lSt}>Faturamento R$</label><input style={iSt} value={form.fRS} onChange={setField("fRS")} placeholder="Ex: 2850000"/></div>
             <div><label style={lSt}>Faturamento KG</label><input style={iSt} value={form.fKG} onChange={setField("fKG")} placeholder="Ex: 185400"/></div>
@@ -1326,9 +1472,9 @@ function FechamentoMensal({T}) {
       {current ? (
         <>
           {/* Summary KPI cards */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:16}}>
+          <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
             {[{title:"Faturamento R$",value:fmtRS(current.faturamentoRS),sub:current.label,Icon:DollarSign,color:"#3b82f6"},{title:"Faturamento KG",value:fmtN(current.faturamentoKG)+" kg",sub:"Total expedido",Icon:Package,color:"#06b6d4"},{title:"Vendido R$",value:fmtRS(current.vendidoRS),sub:"Total pedidos",Icon:TrendingUp,color:"#10b981"},{title:"Vendido KG",value:fmtN(current.vendidoKG)+" kg",sub:"Pedidos em peso",Icon:Package,color:"#8b5cf6"}].map(({title,value,sub,Icon,color})=>(
-              <div key={title} style={{...cSt,borderTop:`3px solid ${color}`}}>
+              <div key={title} className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
                   <div style={{background:color+"20",borderRadius:8,padding:7}}><Icon size={15} color={color}/></div>
@@ -1348,7 +1494,7 @@ function FechamentoMensal({T}) {
                   Comparativo Mês a Mês <span style={{fontSize:12,fontWeight:400,color:T.muted,marginLeft:8}}>{current.label} vs {previous.label}</span>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+              <div className="dg-grid dg-grid-4" style={{display:"grid",gap:12}}>
                 <DeltaCard label="Faturamento R$" curr={current.faturamentoRS} prev={previous.faturamentoRS} color="#3b82f6" T={T}/>
                 <DeltaCard label="Faturamento KG" curr={current.faturamentoKG} prev={previous.faturamentoKG} color="#06b6d4" T={T}/>
                 <DeltaCard label="Vendido R$"     curr={current.vendidoRS}     prev={previous.vendidoRS}     color="#10b981" T={T}/>
@@ -1428,7 +1574,7 @@ function FechamentoMensal({T}) {
 
 // ── BibliotecaPage ───────────────────────────────────────────
 function BibliotecaPage({T}) {
-  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const comingSoon=[
     {emoji:"⚖️", label:"Calculadora de Pesos",    desc:"Calcule o peso de barras, tubos e perfis a partir das dimensões e do material."},
     {emoji:"📏", label:"Tabela de Barras",          desc:"Medidas padronizadas de barras chatas, redondas, quadradas e sextavadas."},
@@ -1450,7 +1596,7 @@ function BibliotecaPage({T}) {
       <div style={{fontSize:13,fontWeight:600,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:12}}>
         Módulos previstos
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+      <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
         {comingSoon.map(({emoji,label,desc})=>(
           <div key={label} style={{...cSt,opacity:.65,cursor:"default",borderLeft:`3px solid ${T.border}`}}>
             <div style={{fontSize:26,marginBottom:10}}>{emoji}</div>
@@ -1477,8 +1623,14 @@ function MesesFechados({T,reloadKey}) {
     })();
   },[reloadKey]);
   const deleteMth=async(id)=>{const u=months.filter(m=>m.id!==id);setMonths(u);try{await window.storage.set("closed_months",JSON.stringify(u));}catch(_){}if(selected?.id===id)setSelected(null);};
-  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
-  if(loading)return <div style={{color:T.muted,padding:40,textAlign:"center"}}>Carregando...</div>;
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14,marginBottom:16}}>
+        {Array.from({length:3}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+    </div>
+  );
   if(selected){
     const s=selected;
     const sorted=[...months].sort((a,b)=>a.id.localeCompare(b.id));
@@ -1515,7 +1667,7 @@ function MesesFechados({T,reloadKey}) {
               Comparativo Mês a Mês {prev?<span style={{fontSize:12,fontWeight:400,color:T.muted,marginLeft:8}}>{s.label} vs {prev.label}</span>:<span style={{fontSize:12,fontWeight:400,color:T.faint,marginLeft:8}}>— feche mais meses para comparar</span>}
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12}}>
+          <div className="dg-grid dg-grid-5" style={{display:"grid",gap:12}}>
             {sumDefs.map(({label,curr,prevVal,color,inv})=>(
               <DeltaCard key={label} label={label} curr={curr} prev={prevVal} color={color} T={T} inv={inv}/>
             ))}
@@ -1558,9 +1710,9 @@ function MesesFechados({T,reloadKey}) {
   return (
     <>
       <div style={{color:T.muted,fontSize:14,marginBottom:16}}>{months.length} mês(es) arquivado(s)</div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16}}>
+      <div className="dg-grid dg-grid-3" style={{display:"grid",gap:16}}>
         {[...months].reverse().map(m=>(
-          <div key={m.id} onClick={()=>setSelected(m)} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20,cursor:"pointer"}}>
+          <div key={m.id} onClick={()=>setSelected(m)} className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
               <div><div style={{fontSize:20,fontWeight:700,color:T.text}}>{m.label}</div><div style={{fontSize:11,color:T.muted,marginTop:2}}>Fechado em {toDisplay(m.closedAt)} · {m.entries.length} dias</div></div>
               <div style={{background:"#10b98120",borderRadius:8,padding:7}}><Archive size={15} color="#10b981"/></div>
@@ -1616,10 +1768,17 @@ function Compras({T,onPendingChange}) {
   const uns=["kg","un","pç","L","m","m²","caixa","pares","rolo"];
   const sc={Todos:lista.length,Pendente:lista.filter(r=>r.status==="Pendente").length,Aprovado:lista.filter(r=>r.status==="Aprovado").length,Recusado:lista.filter(r=>r.status==="Recusado").length};
   const filtered=filtro==="Todos"?lista:lista.filter(r=>r.status===filtro);
-  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:20};
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const iSt={background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",color:T.text,fontSize:14,width:"100%",boxSizing:"border-box",outline:"none"};
   const lSt={fontSize:12,color:T.sub,marginBottom:4,display:"block"};
-  if(loading)return <div style={{color:T.muted,padding:40,textAlign:"center"}}>Carregando...</div>;
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
+        {Array.from({length:4}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+      <div style={{marginBottom:16}}><SkeletonChart T={T}/></div>
+    </div>
+  );
   return (
     <>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
@@ -1722,15 +1881,18 @@ export default function App() {
   const [page,          setPage]          =useState("home");
   const [dark,          setDark]          =useState(true);
   const [compact,       setCompact]       =useState(false);
+  const [sidebarOpen,   setSidebarOpen]   =useState(false);
   const [reloadKey,     setReloadKey]     =useState(0);
   const [atrasoAlert,   setAtrasoAlert]   =useState(false);
   const [presentMode,   setPresentMode]   =useState(false);
   const [pdfContent,    setPdfContent]    =useState(null);
   const [pdfTitle,      setPdfTitle]      =useState("");
-  const T=THEMES[dark?"dark":"light"];
+  const T={...THEMES[dark?"dark":"light"],compact};
   useGlobalCSS();
 
   useEffect(()=>{ _pdfCb=(html,t)=>{setPdfContent(html);setPdfTitle(t);}; },[]);
+
+  const goTo=(id)=>{setPage(id);setSidebarOpen(false);};
 
   const nav=[
     {section:"Principal",items:[{id:"home",label:"Início",icon:HomeIcon}]},
@@ -1749,14 +1911,20 @@ export default function App() {
       {presentMode&&<PresentMode onExit={()=>setPresentMode(false)}/>}
       {pdfContent&&<PDFModal content={pdfContent} title={pdfTitle} onClose={()=>setPdfContent(null)}/>}
 
+      {/* Overlay (mobile only, closes sidebar) */}
+      <div className={`dg-overlay${sidebarOpen?" dg-overlay-open":""}`} onClick={()=>setSidebarOpen(false)}/>
+
       {/* Sidebar */}
-      <div style={{width:240,background:T.card,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,left:0,height:"100vh",zIndex:100,transition:"background .2s"}}>
-        <div style={{padding:"20px 16px",borderBottom:`1px solid ${T.border}`}}>
-          <div style={{fontSize:14,fontWeight:700,color:T.text,display:"flex",alignItems:"center",gap:8}}>
-            <div style={{background:"#3b82f620",borderRadius:8,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📊</div>
-            Dashboard Gerencial
+      <div className={`dg-sidebar${sidebarOpen?" dg-sidebar-open":""}`} style={{width:240,background:T.card,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column",position:"fixed",top:0,left:0,height:"100vh",zIndex:100,transition:"background .2s"}}>
+        <div style={{padding:"20px 16px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:T.text,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{background:"#3b82f620",borderRadius:8,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>📊</div>
+              Dashboard Gerencial
+            </div>
+            <div style={{fontSize:11,color:T.muted,marginTop:3,marginLeft:40}}>Painel de Gestão</div>
           </div>
-          <div style={{fontSize:11,color:T.muted,marginTop:3,marginLeft:40}}>Painel de Gestão</div>
+          <button onClick={()=>setSidebarOpen(false)} className="dg-hamburger" style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer",padding:4}}><X size={18}/></button>
         </div>
         <nav style={{flex:1,padding:"12px 0",overflowY:"auto"}}>
           {nav.map(({section,items})=>(
@@ -1765,7 +1933,7 @@ export default function App() {
               {items.map(({id,label,icon:Icon,disabled,badge,alertDot})=>{
                 const active=page===id;
                 return (
-                  <div key={id} onClick={()=>!disabled&&setPage(id)}
+                  <div key={id} onClick={()=>!disabled&&goTo(id)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:disabled?"default":"pointer",borderRadius:6,margin:"2px 8px",background:active?"#3b82f620":"transparent",color:disabled?T.border:active?"#60a5fa":T.sub,borderLeft:`3px solid ${active?"#3b82f6":"transparent"}`,fontSize:13,fontWeight:active?600:400,opacity:disabled?.4:1,transition:"all .15s"}}>
                     <div style={{position:"relative",flexShrink:0}}>
                       <Icon size={15}/>
@@ -1779,30 +1947,36 @@ export default function App() {
             </div>
           ))}
         </nav>
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,fontSize:11,color:T.faint}}>v1.7.0 · Dashboard Gerencial</div>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,fontSize:11,color:T.faint}}>v1.8.0 · Dashboard Gerencial</div>
       </div>
 
       {/* Main */}
-      <div style={{marginLeft:240,flex:1,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
-        <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,transition:"background .2s"}}>
-          <div style={{fontSize:18,fontWeight:700,color:T.text}}>{titles[page]}</div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <button onClick={printDashboard} style={{display:"flex",alignItems:"center",gap:6,background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
-              <Download size={14}/> Exportar PDF
+      <div className="dg-main" style={{marginLeft:240,flex:1,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
+        <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:T.compact?"10px 24px":"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,transition:"background .2s",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+            <button onClick={()=>setSidebarOpen(true)} className="dg-hamburger" style={{background:T.card2,border:`1px solid ${T.border}`,color:T.sub,borderRadius:8,padding:8,cursor:"pointer",alignItems:"center"}}><Menu size={16}/></button>
+            <div style={{fontSize:18,fontWeight:700,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{titles[page]}</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",justifyContent:"flex-end"}}>
+            <button onClick={printDashboard} className="no-print" style={{display:"flex",alignItems:"center",gap:6,background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
+              <Download size={14}/> <span className="dg-topbar-label">Exportar PDF</span>
             </button>
-            <button onClick={()=>setPresentMode(true)} style={{display:"flex",alignItems:"center",gap:6,background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
-              <Maximize2 size={14}/> Apresentação
+            <button onClick={()=>setPresentMode(true)} className="no-print" style={{display:"flex",alignItems:"center",gap:6,background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600}}>
+              <Maximize2 size={14}/> <span className="dg-topbar-label">Apresentação</span>
+            </button>
+            <button onClick={()=>setCompact(!compact)} title="Modo compacto" style={{display:"flex",alignItems:"center",gap:6,background:compact?"#8b5cf6":"#8b5cf620",color:compact?"#fff":"#8b5cf6",border:"1px solid #8b5cf6",borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600,transition:"all .2s"}}>
+              <Minus size={14}/> <span className="dg-topbar-label">{compact?"Modo Normal":"Modo Compacto"}</span>
             </button>
             <button onClick={()=>setDark(!dark)} style={{display:"flex",alignItems:"center",gap:6,background:dark?"#1e3a5f":"#fef9c3",color:dark?"#60a5fa":"#b45309",border:`1px solid ${dark?"#3b82f6":"#fbbf24"}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",fontSize:13,fontWeight:600,transition:"all .2s"}}>
-              {dark?(<><Sun size={14}/> Tema Claro</>):(<><Moon size={14}/> Tema Escuro</>)}
+              {dark?(<><Sun size={14}/> <span className="dg-topbar-label">Tema Claro</span></>):(<><Moon size={14}/> <span className="dg-topbar-label">Tema Escuro</span></>)}
             </button>
-            <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div className="dg-topbar-label" style={{display:"flex",alignItems:"center",gap:6}}>
               <div style={{width:8,height:8,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 6px #10b981"}}/>
               <span style={{fontSize:12,color:T.muted,textTransform:"capitalize"}}>{getDynDate()}</span>
             </div>
           </div>
         </div>
-        <div style={{padding:24,flex:1}}>
+        <div className="dg-page" style={{padding:compact?16:24,flex:1}}>
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
           {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert}/>}
           {page==="mensal"   &&<FechamentoMensal T={T}/>}
