@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie } from "recharts";
-import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X, Menu } from "lucide-react";
+import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X, Menu, LogOut, UserPlus, Shield, User, Eye, EyeOff, Lock, Users as UsersIcon } from "lucide-react";
 
 // ─── CSS Global ───────────────────────────────────────────────
 function useGlobalCSS() {
@@ -159,6 +159,14 @@ const EMPTY_FORM       = { date:"", faturamento:"", atrasos:"", vendas:"", prevM
 const EMPTY_PROD_METAS = Object.fromEntries(TIPOS.map(t => [t,""]));
 const mkMF = () => ({ mes:new Date().toISOString().slice(0,7), fRS:"", fKG:"", vRS:"", vKG:"", produtos:TIPOS.map(t=>({tipo:t,rs:"",kg:""})) });
 
+// ── Autenticação (login simples: usuário/senha no Firestore) ──
+const ROLES = { admin:"Administrador", operador:"Operador" };
+const sha256 = async (str) => {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+};
+const isAdmin = (u) => u?.role === "admin";
+
 const fmtRS  = (n) => n!=null ? new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",maximumFractionDigits:0}).format(n) : "—";
 const fmtN   = (n) => n!=null ? new Intl.NumberFormat("pt-BR").format(n) : "—";
 const today  = () => new Date().toISOString().split("T")[0];
@@ -265,6 +273,251 @@ function ToastContainer({toasts}) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── Shared UI ────────────────────────────────────────────────
+
+// ── AuthScreen: login OU criação do primeiro admin (first-run) ──
+function AuthScreen({dark,setDark,usersExist,onLogin}) {
+  const T=THEMES[dark?"dark":"light"];
+  const [mode]=useState(usersExist?"login":"setup");
+  const [nome,setNome]=useState("");
+  const [username,setUsername]=useState("");
+  const [password,setPassword]=useState("");
+  const [confirm,setConfirm]=useState("");
+  const [showPw,setShowPw]=useState(false);
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  const doLogin=async()=>{
+    setErr("");
+    if(!username||!password){setErr("Preencha usuário e senha.");return;}
+    setBusy(true);
+    try{
+      let users=[];
+      try{const r=await window.storage.get("app_users");if(r)users=JSON.parse(r.value);}catch(_){}
+      const hash=await sha256(password);
+      const u=users.find(x=>x.username===username.trim().toLowerCase()&&x.passwordHash===hash);
+      if(!u){setErr("Usuário ou senha inválidos.");setBusy(false);return;}
+      if(u.active===false){setErr("Este usuário está desativado. Fale com um administrador.");setBusy(false);return;}
+      onLogin(u);
+    }catch(_){setErr("Erro ao autenticar. Tente novamente.");}
+    setBusy(false);
+  };
+
+  const doSetup=async()=>{
+    setErr("");
+    if(!nome||!username||!password){setErr("Preencha todos os campos.");return;}
+    if(password.length<4){setErr("A senha deve ter ao menos 4 caracteres.");return;}
+    if(password!==confirm){setErr("As senhas não coincidem.");return;}
+    setBusy(true);
+    try{
+      const hash=await sha256(password);
+      const admin={id:"u_"+Date.now(),nome,username:username.trim().toLowerCase(),passwordHash:hash,role:"admin",active:true,createdAt:today()};
+      try{await window.storage.set("app_users",JSON.stringify([admin]));}catch(_){}
+      onLogin(admin);
+    }catch(_){setErr("Erro ao criar administrador. Tente novamente.");}
+    setBusy(false);
+  };
+
+  const iSt={width:"100%",padding:"11px 14px",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:14,boxSizing:"border-box"};
+  const lSt={display:"block",fontSize:12,color:T.muted,marginBottom:6,fontWeight:600};
+
+  return (
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div className="dg-page" style={{width:"100%",maxWidth:400,background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:32,boxShadow:"0 20px 50px rgba(0,0,0,.25)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{background:"#3b82f620",borderRadius:14,width:56,height:56,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 14px"}}>📊</div>
+          <div style={{fontSize:19,fontWeight:700,color:T.text}}>Dashboard Gerencial</div>
+          <div style={{fontSize:13,color:T.muted,marginTop:4}}>{mode==="setup"?"Primeiro acesso — crie a conta de administrador":"Entre com seu usuário e senha"}</div>
+        </div>
+
+        {mode==="setup"&&(
+          <div style={{marginBottom:14}}>
+            <label style={lSt}>Seu nome</label>
+            <input style={iSt} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Caique Silva"/>
+          </div>
+        )}
+        <div style={{marginBottom:14}}>
+          <label style={lSt}>Usuário</label>
+          <input style={iSt} value={username} onChange={e=>setUsername(e.target.value)} placeholder="Ex: caique" autoCapitalize="none"
+            onKeyDown={e=>{if(e.key==="Enter")(mode==="setup"?doSetup:doLogin)();}}/>
+        </div>
+        <div style={{marginBottom:mode==="setup"?14:8}}>
+          <label style={lSt}>Senha</label>
+          <div style={{position:"relative"}}>
+            <input type={showPw?"text":"password"} style={{...iSt,paddingRight:40}} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"
+              onKeyDown={e=>{if(e.key==="Enter")(mode==="setup"?doSetup:doLogin)();}}/>
+            <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}>
+              {showPw?<EyeOff size={16}/>:<Eye size={16}/>}
+            </button>
+          </div>
+        </div>
+        {mode==="setup"&&(
+          <div style={{marginBottom:8}}>
+            <label style={lSt}>Confirmar senha</label>
+            <input type={showPw?"text":"password"} style={iSt} value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="••••••••"
+              onKeyDown={e=>{if(e.key==="Enter")doSetup();}}/>
+          </div>
+        )}
+
+        {err&&<div style={{background:"#ef444415",border:"1px solid #ef444440",color:"#ef4444",borderRadius:8,padding:"9px 12px",fontSize:12.5,marginBottom:14}}>{err}</div>}
+
+        <button onClick={mode==="setup"?doSetup:doLogin} disabled={busy} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1,marginTop:mode==="setup"?8:14}}>
+          <Lock size={15}/> {busy?"Aguarde...":mode==="setup"?"Criar Administrador e Entrar":"Entrar"}
+        </button>
+
+        <div style={{textAlign:"center",marginTop:20}}>
+          <button onClick={()=>setDark(!dark)} style={{background:"transparent",border:"none",color:T.faint,cursor:"pointer",fontSize:12,display:"inline-flex",alignItems:"center",gap:5}}>
+            {dark?<Sun size={13}/>:<Moon size={13}/>} Alternar tema
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── UsersPage: gestão de usuários (somente Admin) ──────────────
+function UsersPage({T,currentUser,onUserUpdated}) {
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showForm,setShowForm]=useState(false);
+  const [form,setForm]=useState({nome:"",username:"",password:"",role:"operador"});
+  const [resetId,setResetId]=useState(null);
+  const [resetPw,setResetPw]=useState("");
+
+  const load=async()=>{
+    try{const r=await window.storage.get("app_users");if(r)setUsers(JSON.parse(r.value));}catch(_){}
+    setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+
+  const persist=async(d)=>{setUsers(d);try{await window.storage.set("app_users",JSON.stringify(d));}catch(_){}};
+
+  const createUser=async()=>{
+    if(!form.nome||!form.username||!form.password){toast("Preencha todos os campos.","error");return;}
+    if(form.password.length<4){toast("A senha deve ter ao menos 4 caracteres.","error");return;}
+    const uname=form.username.trim().toLowerCase();
+    if(users.some(u=>u.username===uname)){toast("Já existe um usuário com esse login.","error");return;}
+    const hash=await sha256(form.password);
+    const novo={id:"u_"+Date.now(),nome:form.nome,username:uname,passwordHash:hash,role:form.role,active:true,createdAt:today()};
+    await persist([...users,novo]);
+    setForm({nome:"",username:"",password:"",role:"operador"});
+    setShowForm(false);
+    toast(`Usuário "${novo.nome}" criado com sucesso!`);
+  };
+
+  const toggleActive=async(u)=>{
+    if(u.id===currentUser.id){toast("Você não pode desativar seu próprio usuário.","error");return;}
+    if(u.role==="admin"&&u.active!==false&&users.filter(x=>x.role==="admin"&&x.active!==false).length<=1){
+      toast("É preciso manter ao menos um administrador ativo.","error");return;
+    }
+    await persist(users.map(x=>x.id===u.id?{...x,active:x.active===false}:x));
+    toast(u.active===false?`"${u.nome}" reativado.`:`"${u.nome}" desativado.`,"info");
+  };
+
+  const changeRole=async(u,role)=>{
+    if(u.id===currentUser.id&&role!=="admin"){toast("Você não pode remover seu próprio nível de administrador.","error");return;}
+    if(u.role==="admin"&&role!=="admin"&&users.filter(x=>x.role==="admin"&&x.active!==false).length<=1){
+      toast("É preciso manter ao menos um administrador ativo.","error");return;
+    }
+    await persist(users.map(x=>x.id===u.id?{...x,role}:x));
+    toast(`Nível de "${u.nome}" alterado para ${ROLES[role]}.`,"info");
+    if(u.id===currentUser.id&&onUserUpdated)onUserUpdated({...u,role});
+  };
+
+  const doResetPw=async(u)=>{
+    if(resetPw.length<4){toast("A senha deve ter ao menos 4 caracteres.","error");return;}
+    const hash=await sha256(resetPw);
+    await persist(users.map(x=>x.id===u.id?{...x,passwordHash:hash}:x));
+    setResetId(null);setResetPw("");
+    toast(`Senha de "${u.nome}" redefinida.`);
+  };
+
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const iSt={width:"100%",padding:"9px 12px",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:13.5,boxSizing:"border-box"};
+  const lSt={display:"block",fontSize:11,color:T.muted,marginBottom:5,fontWeight:600,textTransform:"uppercase",letterSpacing:.4};
+
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
+        {Array.from({length:3}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="dg-page">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{fontSize:13,color:T.muted}}>{users.length} usuário{users.length!==1?"s":""} cadastrado{users.length!==1?"s":""}</div>
+        <button onClick={()=>setShowForm(!showForm)} style={{display:"flex",alignItems:"center",gap:6,background:showForm?T.card2:"#3b82f6",color:showForm?T.sub:"#fff",border:showForm?`1px solid ${T.border}`:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
+          <UserPlus size={15}/> {showForm?"Cancelar":"Novo Usuário"}
+        </button>
+      </div>
+
+      {showForm&&(
+        <div style={{...cSt,borderTop:"3px solid #3b82f6",marginBottom:16}}>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:16,color:T.text}}>👤 Novo Usuário</div>
+          <div className="dg-grid dg-grid-2" style={{display:"grid",gap:12,marginBottom:14}}>
+            <div><label style={lSt}>Nome completo</label><input style={iSt} value={form.nome} onChange={e=>setForm(p=>({...p,nome:e.target.value}))} placeholder="Ex: João Souza"/></div>
+            <div><label style={lSt}>Usuário (login)</label><input style={iSt} value={form.username} onChange={e=>setForm(p=>({...p,username:e.target.value}))} placeholder="Ex: joao.souza"/></div>
+            <div><label style={lSt}>Senha</label><input type="password" style={iSt} value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))} placeholder="Mínimo 4 caracteres"/></div>
+            <div>
+              <label style={lSt}>Nível de acesso</label>
+              <select style={iSt} value={form.role} onChange={e=>setForm(p=>({...p,role:e.target.value}))}>
+                <option value="operador">Operador</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+          </div>
+          <button onClick={createUser} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:600,fontSize:14}}><Save size={14}/> Criar Usuário</button>
+        </div>
+      )}
+
+      {users.length===0?(
+        <div style={{...cSt,textAlign:"center",padding:52}}>
+          <div className="dg-empty-icon" style={{width:64,height:64,borderRadius:"50%",background:"#3b82f620",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30}}>👥</div>
+          <div style={{color:T.text,fontSize:16,fontWeight:600}}>Nenhum usuário cadastrado</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {users.map(u=>(
+            <div key={u.id} style={{...cSt,padding:16,opacity:u.active===false?.55:1}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{background:u.role==="admin"?"#8b5cf620":"#3b82f620",borderRadius:"50%",width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {u.role==="admin"?<Shield size={16} color="#8b5cf6"/>:<User size={16} color="#3b82f6"/>}
+                  </div>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:T.text,display:"flex",alignItems:"center",gap:8}}>
+                      {u.nome}
+                      {u.id===currentUser.id&&<span style={{fontSize:10,background:"#3b82f620",color:"#3b82f6",borderRadius:6,padding:"2px 7px",fontWeight:700}}>VOCÊ</span>}
+                      {u.active===false&&<span style={{fontSize:10,background:"#ef444420",color:"#ef4444",borderRadius:6,padding:"2px 7px",fontWeight:700}}>INATIVO</span>}
+                    </div>
+                    <div style={{fontSize:12,color:T.muted}}>@{u.username} · desde {toDisplay(u.createdAt)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <select value={u.role} onChange={e=>changeRole(u,e.target.value)} style={{...iSt,width:"auto",padding:"7px 10px",fontSize:12.5}}>
+                    <option value="operador">Operador</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                  <button onClick={()=>{setResetId(resetId===u.id?null:u.id);setResetPw("");}} style={{background:T.card2,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12.5,fontWeight:600}}>Redefinir Senha</button>
+                  <button onClick={()=>toggleActive(u)} style={{background:u.active===false?"#10b98120":"#ef444420",color:u.active===false?"#10b981":"#ef4444",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12.5,fontWeight:600}}>{u.active===false?"Reativar":"Desativar"}</button>
+                </div>
+              </div>
+              {resetId===u.id&&(
+                <div style={{display:"flex",gap:8,marginTop:12,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
+                  <input type="password" style={iSt} value={resetPw} onChange={e=>setResetPw(e.target.value)} placeholder="Nova senha (mín. 4 caracteres)"/>
+                  <button onClick={()=>doResetPw(u)} style={{background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:13,whiteSpace:"nowrap"}}>Salvar</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -987,7 +1240,8 @@ function HomePage({T,onNavigate}) {
 }
 
 // ── FechamentoDiario ─────────────────────────────────────────
-function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
+function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
+  const canManage=isAdmin(currentUser);
   const initForm={...EMPTY_FORM,date:today()};
   const [entries,    setEntries]    =useState([]);
   const [form,       setForm]       =useState(initForm);
@@ -1150,16 +1404,16 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
               <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
             </div>
           )}
-          <button onClick={()=>closeAll(showMetas?"":"metas")} style={{display:"flex",alignItems:"center",gap:6,background:showMetas?"#f59e0b":"#f59e0b20",color:showMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Período</button>
-          <button onClick={()=>closeAll(showFeriados?"":"feriados")} style={{display:"flex",alignItems:"center",gap:6,background:showFeriados?"#8b5cf6":"#8b5cf620",color:showFeriados?"#fff":"#8b5cf6",border:"1px solid #8b5cf6",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}><Calendar size={15}/> Feriados</button>
+          {canManage&&<button onClick={()=>closeAll(showMetas?"":"metas")} style={{display:"flex",alignItems:"center",gap:6,background:showMetas?"#f59e0b":"#f59e0b20",color:showMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Período</button>}
+          {canManage&&<button onClick={()=>closeAll(showFeriados?"":"feriados")} style={{display:"flex",alignItems:"center",gap:6,background:showFeriados?"#8b5cf6":"#8b5cf620",color:showFeriados?"#fff":"#8b5cf6",border:"1px solid #8b5cf6",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}><Calendar size={15}/> Feriados</button>}
           {entries.length>0&&(
             <>
               <button onClick={()=>closeAll(showHist?"":"hist")} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>
                 <BarChart2 size={15}/> Histórico {showHist?<ChevronUp size={13}/>:<ChevronDown size={13}/>}
               </button>
-              <button onClick={()=>closeAll(showFechar?"":"fechar")} style={{display:"flex",alignItems:"center",gap:6,background:showFechar?"#10b981":"#10b98120",color:showFechar?"#fff":"#10b981",border:"1px solid #10b981",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
+              {canManage&&<button onClick={()=>closeAll(showFechar?"":"fechar")} style={{display:"flex",alignItems:"center",gap:6,background:showFechar?"#10b981":"#10b98120",color:showFechar?"#fff":"#10b981",border:"1px solid #10b981",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
                 <Archive size={15}/> Fechar Mês
-              </button>
+              </button>}
             </>
           )}
           <button onClick={()=>closeAll(showForm?"":"form")} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
@@ -1332,7 +1586,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
                   <td style={{padding:"11px 12px"}}>
                     <div style={{display:"flex",gap:4}}>
                       <button onClick={()=>startEdit(e)} style={{background:"#3b82f620",color:"#60a5fa",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Edit2 size={12}/></button>
-                      <button onClick={()=>deleteEntry(e.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>
+                      {canManage&&<button onClick={()=>deleteEntry(e.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>}
                     </div>
                   </td>
                 </tr>
@@ -1354,7 +1608,8 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert}) {
 }
 
 // ── FechamentoMensal ─────────────────────────────────────────
-function FechamentoMensal({T}) {
+function FechamentoMensal({T,currentUser}) {
+  const canManage=isAdmin(currentUser);
   const [records,    setRecords]    =useState([]);
   const [form,       setForm]       =useState(mkMF());
   const [showForm,   setShowForm]   =useState(false);
@@ -1438,7 +1693,7 @@ function FechamentoMensal({T}) {
               <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
             </div>
           )}
-          <button onClick={()=>{setShowPMetas(!showPMetas);setShowForm(false);}} style={{display:"flex",alignItems:"center",gap:6,background:showPMetas?"#f59e0b":"#f59e0b20",color:showPMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Produto</button>
+          {canManage&&<button onClick={()=>{setShowPMetas(!showPMetas);setShowForm(false);}} style={{display:"flex",alignItems:"center",gap:6,background:showPMetas?"#f59e0b":"#f59e0b20",color:showPMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Produto</button>}
           <button onClick={()=>{setShowForm(!showForm);setShowPMetas(false);if(showForm)setForm(mkMF());}} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
             <Plus size={15}/>{showForm?"Cancelar":"Lançar Mês"}
           </button>
@@ -1593,7 +1848,7 @@ function FechamentoMensal({T}) {
                     <td style={{padding:"11px 12px"}}>
                       <div style={{display:"flex",gap:4}}>
                         <button onClick={()=>editRecord(r)} style={{background:"#3b82f620",color:"#60a5fa",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Edit2 size={12}/></button>
-                        <button onClick={()=>deleteRecord(r.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>
+                        {canManage&&<button onClick={()=>deleteRecord(r.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>}
                       </div>
                     </td>
                   </tr>
@@ -1929,6 +2184,9 @@ export default function App() {
   const [pdfContent,    setPdfContent]    =useState(null);
   const [pdfTitle,      setPdfTitle]      =useState("");
   const [toasts,        setToasts]        =useState([]);
+  const [currentUser,   setCurrentUser]   =useState(null);
+  const [usersExist,    setUsersExist]    =useState(true);
+  const [authLoading,   setAuthLoading]   =useState(true);
   const T={...THEMES[dark?"dark":"light"],compact};
   useGlobalCSS();
 
@@ -1941,6 +2199,14 @@ export default function App() {
       setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),2900);
     };
   },[]);
+  useEffect(()=>{
+    (async()=>{
+      try{const r=await window.storage.get("app_users");const list=r?JSON.parse(r.value):[];setUsersExist(list.length>0);}catch(_){setUsersExist(false);}
+      setAuthLoading(false);
+    })();
+  },[]);
+
+  const logout=()=>{setCurrentUser(null);setPage("home");setSidebarOpen(false);toast("Sessão encerrada.","info");};
 
   const goTo=(id)=>{setPage(id);setSidebarOpen(false);};
 
@@ -1952,10 +2218,18 @@ export default function App() {
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
+    ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon}]}]:[]),
     {section:"Em Breve",items:[{id:"__s1",label:"Financeiro",icon:DollarSign,disabled:true},{id:"__s2",label:"Estoque",icon:ShoppingCart,disabled:true}]},
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca"};
+  const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
+
+  if(authLoading){
+    return <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",color:T.muted,fontSize:14}}>Carregando…</div>;
+  }
+  if(!currentUser){
+    return <AuthScreen dark={dark} setDark={setDark} usersExist={usersExist} onLogin={(u)=>{setCurrentUser(u);setUsersExist(true);toast(`Bem-vindo(a), ${u.nome}!`);}}/>;
+  }
 
   return (
     <div style={{display:"flex",minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'Inter',system-ui,sans-serif",transition:"background .2s,color .2s"}}>
@@ -1999,7 +2273,21 @@ export default function App() {
             </div>
           ))}
         </nav>
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`,fontSize:11,color:T.faint}}>v1.8.0 · Dashboard Gerencial</div>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${T.border}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+            <div style={{background:isAdmin(currentUser)?"#8b5cf620":"#3b82f620",borderRadius:"50%",width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              {isAdmin(currentUser)?<Shield size={14} color="#8b5cf6"/>:<User size={14} color="#3b82f6"/>}
+            </div>
+            <div style={{minWidth:0}}>
+              <div style={{fontSize:12.5,fontWeight:600,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.nome}</div>
+              <div style={{fontSize:10.5,color:T.faint}}>{ROLES[currentUser.role]}</div>
+            </div>
+          </div>
+          <button onClick={logout} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:600}}>
+            <LogOut size={13}/> Sair
+          </button>
+          <div style={{fontSize:10,color:T.faint,marginTop:8,textAlign:"center"}}>v1.9.0 · Dashboard Gerencial</div>
+        </div>
       </div>
 
       {/* Main */}
@@ -2030,10 +2318,11 @@ export default function App() {
         </div>
         <div className="dg-page" style={{padding:compact?16:24,flex:1}}>
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
-          {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert}/>}
-          {page==="mensal"   &&<FechamentoMensal T={T}/>}
+          {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser}/>}
+          {page==="mensal"   &&<FechamentoMensal T={T} currentUser={currentUser}/>}
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T}/>}
+          {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
         </div>
       </div>
     </div>
