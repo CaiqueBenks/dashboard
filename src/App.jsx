@@ -145,7 +145,20 @@ const THEMES = {
   light: { bg:"#f1f5f9", card:"#ffffff",  card2:"#f8fafc",  border:"#e2e8f0", text:"#0f172a", sub:"#475569", muted:"#64748b", faint:"#94a3b8", inputBg:"#f8fafc" },
 };
 
-const TIPOS  = ["Cobre","Latão","Alumínio","Tubos","Barras","Laminados"];
+const MATERIAIS = ["Tubo","Barra","Vergalhão","Arame","Chapa","Laminado","Conexão","Diversos"];
+const LIGAS     = ["Cobre","Latão","Alumínio","Inox","Diversas"];
+const mkProdRow = (overrides={}) => ({id:"p_"+Date.now()+"_"+Math.random().toString(36).slice(2,7),material:MATERIAIS[0],liga:LIGAS[0],vendidoRS:"",vendidoKG:"",faturadoRS:"",faturadoKG:"",...overrides});
+// Mapeia categorias antigas (flat) para a nova taxonomia material×liga, na migração automática
+const mapLegacyTipo = (tipo) => {
+  const t=(tipo||"").toLowerCase();
+  if(t==="cobre")return{material:"Diversos",liga:"Cobre"};
+  if(t.startsWith("latã")||t.startsWith("lata"))return{material:"Diversos",liga:"Latão"};
+  if(t.startsWith("alum"))return{material:"Diversos",liga:"Alumínio"};
+  if(t.startsWith("tubo"))return{material:"Tubo",liga:"Diversas"};
+  if(t.startsWith("barra"))return{material:"Barra",liga:"Diversas"};
+  if(t.startsWith("lamin"))return{material:"Laminado",liga:"Diversas"};
+  return{material:"Diversos",liga:"Diversas"};
+};
 const COLORS = ["#3b82f6","#06b6d4","#8b5cf6","#f59e0b","#10b981","#ef4444"];
 const KPI_OPTIONS = [
   { key:"faturamento", label:"Faturamento",    color:"#3b82f6" },
@@ -156,8 +169,7 @@ const KPI_OPTIONS = [
 ];
 const EMPTY_METAS      = { faturamento:"", atrasos:"", vendas:"", prevMes:"", prevProxMes:"" };
 const EMPTY_FORM       = { date:"", faturamento:"", atrasos:"", vendas:"", prevMes:"", prevProxMes:"", obs:"" };
-const EMPTY_PROD_METAS = Object.fromEntries(TIPOS.map(t => [t,""]));
-const mkMF = () => ({ mes:new Date().toISOString().slice(0,7), fRS:"", fKG:"", vRS:"", vKG:"", produtos:TIPOS.map(t=>({tipo:t,rs:"",kg:""})) });
+const EMPTY_PROD_METAS = Object.fromEntries(MATERIAIS.map(m => [m,""]));
 
 // ── Autenticação (login simples: usuário/senha no Firestore) ──
 const ROLES = { admin:"Administrador", operador:"Operador" };
@@ -1260,6 +1272,9 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   const [holidays,     setHolidays]     =useState([]); // [{date,desc}]
   const [showFeriados, setShowFeriados] =useState(false);
   const [holForm,       setHolForm]      =useState({date:"",desc:""});
+  // ── Produtos do Mês (Vendido/Faturado por material×liga, lançado só no fechamento) ──
+  const [produtosMes,   setProdutosMes]  =useState([]);
+  const [prodLoading,   setProdLoading]  =useState(false);
 
   useEffect(()=>{
     (async()=>{
@@ -1334,6 +1349,28 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   const startEdit=(e)=>{setForm({date:e.date,faturamento:e.faturamento??"",atrasos:e.atrasos??"",vendas:e.vendas??"",prevMes:e.prevMes??"",prevProxMes:e.prevProxMes??"",obs:e.obs||""});setEditId(e.id);setShowForm(true);setShowHist(false);setShowMetas(false);setShowFechar(false);setShowFeriados(false);};
   const closeAll=(which)=>{setShowForm(which==="form");setShowMetas(which==="metas");setShowHist(which==="hist");setShowFechar(which==="fechar");setShowFeriados(which==="feriados");if(which!=="form")setEditId(null);};
 
+  const loadProdutosMes=async(monthKey)=>{
+    setProdLoading(true);
+    let all={};
+    try{const r=await window.storage.get("diario_produtos_mensais");if(r)all=JSON.parse(r.value);}catch(_){}
+    const rows=all[monthKey];
+    setProdutosMes(rows&&rows.length>0?rows:[mkProdRow()]);
+    setProdLoading(false);
+  };
+  const openFechar=()=>{
+    if(entries.length>0)loadProdutosMes(entries[0].date.slice(0,7));
+    closeAll(showFechar?"":"fechar");
+  };
+  const addProdRow    =()=>setProdutosMes(p=>[...p,mkProdRow()]);
+  const removeProdRow =(id)=>setProdutosMes(p=>p.filter(r=>r.id!==id));
+  const setProdField  =(id,k)=>(e)=>setProdutosMes(p=>p.map(r=>r.id===id?{...r,[k]:e.target.value}:r));
+  const persistProdutosMes=async(monthKey,rows)=>{
+    let all={};
+    try{const r=await window.storage.get("diario_produtos_mensais");if(r)all=JSON.parse(r.value);}catch(_){}
+    all={...all,[monthKey]:rows};
+    try{await window.storage.set("diario_produtos_mensais",JSON.stringify(all));}catch(_){}
+  };
+
   const confirmarFechamento=async()=>{
     if(entries.length===0)return;
     const monthKey=entries[0].date.slice(0,7);
@@ -1342,9 +1379,9 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
     let list=[];
     try{const ex=await window.storage.get("closed_months");list=ex?JSON.parse(ex.value):[];}catch(_){}
     try{await window.storage.set("closed_months",JSON.stringify([...list.filter(m=>m.id!==monthKey),record]));}catch(_){}
-    // Auto-consolidation prefill for FechamentoMensal
-    const prefill={mes:monthKey,fRS:lastEntry.faturamento??"",vRS:lastEntry.vendas??"",fromDiario:true};
-    try{await window.storage.set("mensal_prefill",JSON.stringify(prefill));}catch(_){}
+    // Produtos do mês (Vendido/Faturado por material×liga) — fonte única também usada pelo Fechamento Mensal
+    const validRows=produtosMes.filter(r=>parseBRL(r.vendidoRS)||parseBRL(r.vendidoKG)||parseBRL(r.faturadoRS)||parseBRL(r.faturadoKG));
+    await persistProdutosMes(monthKey,validRows);
     if(clearAfter){setEntries([]);await persist([]);}
     setShowFechar(false);
     if(onMonthClosed)onMonthClosed();
@@ -1426,7 +1463,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
               <button onClick={()=>closeAll(showHist?"":"hist")} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>
                 <BarChart2 size={15}/> Histórico {showHist?<ChevronUp size={13}/>:<ChevronDown size={13}/>}
               </button>
-              {canManage&&<button onClick={()=>closeAll(showFechar?"":"fechar")} style={{display:"flex",alignItems:"center",gap:6,background:showFechar?"#10b981":"#10b98120",color:showFechar?"#fff":"#10b981",border:"1px solid #10b981",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
+              {canManage&&<button onClick={openFechar} style={{display:"flex",alignItems:"center",gap:6,background:showFechar?"#10b981":"#10b98120",color:showFechar?"#fff":"#10b981",border:"1px solid #10b981",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
                 <Archive size={15}/> Fechar Mês
               </button>}
             </>
@@ -1522,6 +1559,46 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
               ))}
             </div>
           </div>
+
+          <div style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 Produtos do Mês — Vendido e Faturado</div>
+              <button onClick={addProdRow} style={{display:"flex",alignItems:"center",gap:5,background:"#3b82f620",color:"#3b82f6",border:"none",borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}><Plus size={12}/> Produto</button>
+            </div>
+            <div style={{fontSize:11.5,color:T.faint,marginBottom:10}}>Um produto vendido pode ser faturado só no mês seguinte — por isso Vendido e Faturado são lançados separadamente. Esses dados alimentam o Fechamento Mensal automaticamente.</div>
+            {prodLoading?(
+              <div style={{padding:16,textAlign:"center",color:T.faint,fontSize:12}}>Carregando produtos do mês…</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {produtosMes.map(row=>(
+                  <div key={row.id} style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:8,padding:10}}>
+                    <div className="dg-grid dg-grid-6" style={{display:"grid",gap:8,alignItems:"end"}}>
+                      <div>
+                        <label style={{...lSt,fontSize:10}}>Material</label>
+                        <select style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.material} onChange={setProdField(row.id,"material")}>
+                          {MATERIAIS.map(m=><option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{...lSt,fontSize:10}}>Liga</label>
+                        <select style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.liga} onChange={setProdField(row.id,"liga")}>
+                          {LIGAS.map(l=><option key={l} value={l}>{l}</option>)}
+                        </select>
+                      </div>
+                      <div><label style={{...lSt,fontSize:10}}>Vendido R$</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.vendidoRS} onChange={setProdField(row.id,"vendidoRS")} placeholder="0,00"/></div>
+                      <div><label style={{...lSt,fontSize:10}}>Vendido KG</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.vendidoKG} onChange={setProdField(row.id,"vendidoKG")} placeholder="0,00"/></div>
+                      <div><label style={{...lSt,fontSize:10}}>Faturado R$</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.faturadoRS} onChange={setProdField(row.id,"faturadoRS")} placeholder="0,00"/></div>
+                      <div style={{display:"flex",gap:6,alignItems:"end"}}>
+                        <div style={{flex:1}}><label style={{...lSt,fontSize:10}}>Faturado KG</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.faturadoKG} onChange={setProdField(row.id,"faturadoKG")} placeholder="0,00"/></div>
+                        {produtosMes.length>1&&<button onClick={()=>removeProdRow(row.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"7px 9px",cursor:"pointer",flexShrink:0}}><Trash2 size={12}/></button>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,padding:"12px 14px",background:T.card2,border:`1px solid ${T.border}`,borderRadius:8}}>
             <input type="checkbox" id="clearAfter" checked={clearAfter} onChange={e=>setClearAfter(e.target.checked)} style={{width:16,height:16,cursor:"pointer",accentColor:"#10b981"}}/>
             <label htmlFor="clearAfter" style={{fontSize:13,color:T.sub,cursor:"pointer"}}>Limpar lançamentos após o fechamento <span style={{color:T.faint}}>(recomendado)</span></label>
@@ -1642,59 +1719,80 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
 }
 
 // ── FechamentoMensal ─────────────────────────────────────────
-function FechamentoMensal({T,currentUser}) {
+function FechamentoMensal({T,currentUser,onNavigate}) {
   const canManage=isAdmin(currentUser);
-  const [records,    setRecords]    =useState([]);
-  const [form,       setForm]       =useState(mkMF());
-  const [showForm,   setShowForm]   =useState(false);
-  const [loading,    setLoading]    =useState(true);
-  const [prodMetas,  setProdMetas]  =useState(EMPTY_PROD_METAS);
-  const [prodMetasF, setProdMetasF] =useState(EMPTY_PROD_METAS);
-  const [showPMetas, setShowPMetas] =useState(false);
-  const [prefill,    setPrefill]    =useState(null);
+  const [produtosByMonth, setProdutosByMonth] =useState({}); // {"YYYY-MM":[rows]}
+  const [loading,         setLoading]         =useState(true);
+  const [prodMetas,       setProdMetas]       =useState(EMPTY_PROD_METAS);
+  const [prodMetasF,      setProdMetasF]      =useState(EMPTY_PROD_METAS);
+  const [showPMetas,      setShowPMetas]      =useState(false);
+  const [confirmClear,    setConfirmClear]    =useState(null);
 
   useEffect(()=>{
     (async()=>{
-      try{const r=await window.storage.get("mensal_records");if(r)setRecords(JSON.parse(r.value));}catch(_){}
+      let all={};
+      try{const r=await window.storage.get("diario_produtos_mensais");if(r)all=JSON.parse(r.value);}catch(_){}
+      if(Object.keys(all).length===0){
+        // Migração automática (uma única vez): converte registros antigos do Fechamento Mensal
+        // (categorias flat: Cobre, Latão, Alumínio, Tubos, Barras, Laminados) para material×liga.
+        let legacy=[];
+        try{const r=await window.storage.get("mensal_records");if(r)legacy=JSON.parse(r.value);}catch(_){}
+        if(legacy.length>0){
+          legacy.forEach(rec=>{
+            const rows=(rec.produtos||[]).map(p=>{
+              const{material,liga}=mapLegacyTipo(p.tipo);
+              return mkProdRow({material,liga,vendidoRS:"",vendidoKG:"",faturadoRS:p.rs??"",faturadoKG:p.kg??""});
+            });
+            const sumFatRS=rows.reduce((s,r)=>s+(parseBRL(r.faturadoRS)||0),0);
+            const sumFatKG=rows.reduce((s,r)=>s+(parseBRL(r.faturadoKG)||0),0);
+            const restRS=Math.max(0,(rec.faturamentoRS||0)-sumFatRS);
+            const restKG=Math.max(0,(rec.faturamentoKG||0)-sumFatKG);
+            rows.push(mkProdRow({material:"Diversos",liga:"Diversas",vendidoRS:rec.vendidoRS||"",vendidoKG:rec.vendidoKG||"",faturadoRS:restRS||"",faturadoKG:restKG||""}));
+            all[rec.id]=rows;
+          });
+          try{await window.storage.set("diario_produtos_mensais",JSON.stringify(all));}catch(_){}
+          toast(`${legacy.length} registro(s) antigo(s) migrados automaticamente para o novo modelo de produtos.`,"info");
+        }
+      }
+      setProdutosByMonth(all);
       try{const r=await window.storage.get("mensal_prod_metas");if(r){const v=JSON.parse(r.value);setProdMetas(v);setProdMetasF(v);}}catch(_){}
-      try{const r=await window.storage.get("mensal_prefill");if(r){const v=JSON.parse(r.value);if(v?.fromDiario)setPrefill(v);}}catch(_){}
       setLoading(false);
     })();
   },[]);
 
-  const persist  =async(d)=>{try{await window.storage.set("mensal_records",JSON.stringify(d));}catch(_){}};
-  const setField =(k)=>(e)=>setForm(p=>({...p,[k]:e.target.value}));
-  const setProd  =(i,k)=>(e)=>setForm(p=>{const ps=[...p.produtos];ps[i]={...ps[i],[k]:e.target.value};return{...p,produtos:ps};});
-  const setPMeta =(t)=>(e)=>setProdMetasF(p=>({...p,[t]:e.target.value}));
-
-  const saveRecord=async()=>{
-    if(!form.mes)return;
-    const rec={id:form.mes,label:monthLabel(form.mes),savedAt:today(),faturamentoRS:parseBRL(form.fRS),faturamentoKG:parseBRL(form.fKG),vendidoRS:parseBRL(form.vRS),vendidoKG:parseBRL(form.vKG),produtos:form.produtos.map(p=>({tipo:p.tipo,rs:parseBRL(p.rs),kg:parseBRL(p.kg)}))};
-    const updated=[...records.filter(r=>r.id!==form.mes),rec].sort((a,b)=>a.id.localeCompare(b.id));
-    setRecords(updated);await persist(updated);
-    toast(`Dados de ${monthLabel(form.mes)} salvos com sucesso!`);
-  };
-
+  const setPMeta=(m)=>(e)=>setProdMetasF(p=>({...p,[m]:e.target.value}));
   const saveProdMetas=async()=>{
     setProdMetas(prodMetasF);
     try{await window.storage.set("mensal_prod_metas",JSON.stringify(prodMetasF));}catch(_){}
-    toast("Metas por produto salvas com sucesso!");
+    toast("Metas por material salvas com sucesso!");
   };
 
-  const applyPrefill=async()=>{
-    if(!prefill)return;
-    setForm(p=>({...p,mes:prefill.mes,fRS:prefill.fRS||p.fRS,vRS:prefill.vRS||p.vRS}));
-    setShowForm(true);setPrefill(null);
-    try{await window.storage.set("mensal_prefill","");}catch(_){}
+  const clearMonth=async(monthKey)=>{
+    const updated={...produtosByMonth};delete updated[monthKey];
+    setProdutosByMonth(updated);
+    try{await window.storage.set("diario_produtos_mensais",JSON.stringify(updated));}catch(_){}
+    setConfirmClear(null);
+    toast(`Produtos de ${monthLabel(monthKey+"-01")} removidos.`,"info");
   };
 
-  const editRecord=(rec)=>{
-    setForm({mes:rec.id,fRS:rec.faturamentoRS??"",fKG:rec.faturamentoKG??"",vRS:rec.vendidoRS??"",vKG:rec.vendidoKG??"",
-      produtos:TIPOS.map(t=>{const p=rec.produtos?.find(x=>x.tipo===t)||{tipo:t,rs:null,kg:null};return{tipo:t,rs:p.rs??"",kg:p.kg??""};})
-    });
-    setShowForm(true);
-  };
-  const deleteRecord=async(id)=>{const u=records.filter(r=>r.id!==id);setRecords(u);await persist(u);toast("Registro mensal excluído.","info");};
+  // Deriva um "record" por mês a partir das linhas de produtos lançadas no Fechamento Diário
+  const monthKeys=Object.keys(produtosByMonth).filter(k=>produtosByMonth[k]?.length>0).sort();
+  const records=monthKeys.map(mk=>{
+    const rows=produtosByMonth[mk];
+    const sum=(f)=>rows.reduce((s,r)=>s+(parseBRL(r[f])||0),0);
+    const porMaterial=MATERIAIS.map(m=>{
+      const rs=rows.filter(r=>r.material===m).reduce((s,r)=>s+(parseBRL(r.faturadoRS)||0),0);
+      const kg=rows.filter(r=>r.material===m).reduce((s,r)=>s+(parseBRL(r.faturadoKG)||0),0);
+      return rs||kg?{tipo:m,rs,kg}:null;
+    }).filter(Boolean);
+    const detalhado=rows.filter(r=>parseBRL(r.faturadoRS)>0).map(r=>({tipo:`${r.material} · ${r.liga}`,rs:parseBRL(r.faturadoRS),kg:parseBRL(r.faturadoKG)}));
+    return{
+      id:mk,label:monthLabel(mk+"-01"),
+      faturamentoRS:sum("faturadoRS"),faturamentoKG:sum("faturadoKG"),
+      vendidoRS:sum("vendidoRS"),vendidoKG:sum("vendidoKG"),
+      produtos:porMaterial,produtosDetalhado:detalhado,
+    };
+  });
 
   const current  =records.length>0?records[records.length-1]:null;
   const previous =records.length>1?records[records.length-2]:null;
@@ -1727,34 +1825,26 @@ function FechamentoMensal({T,currentUser}) {
               <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
             </div>
           )}
-          {canManage&&<button onClick={()=>{setShowPMetas(!showPMetas);setShowForm(false);}} style={{display:"flex",alignItems:"center",gap:6,background:showPMetas?"#f59e0b":"#f59e0b20",color:showPMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Produto</button>}
-          <button onClick={()=>{setShowForm(!showForm);setShowPMetas(false);if(showForm)setForm(mkMF());}} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
-            <Plus size={15}/>{showForm?"Cancelar":"Lançar Mês"}
+          {canManage&&<button onClick={()=>setShowPMetas(!showPMetas)} style={{display:"flex",alignItems:"center",gap:6,background:showPMetas?"#f59e0b":"#f59e0b20",color:showPMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Material</button>}
+          <button onClick={()=>onNavigate&&onNavigate("diario")} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>
+            <Plus size={15}/> Lançar Produtos no Diário
           </button>
         </div>
       </div>
 
-      {/* Auto-consolidation banner */}
-      {prefill&&!showForm&&(
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#3b82f615",border:"1px solid #3b82f6",borderRadius:10,marginBottom:16}}>
-          <TrendingUp size={18} color="#3b82f6"/>
-          <div style={{flex:1}}>
-            <div style={{fontSize:14,fontWeight:600,color:"#3b82f6"}}>📊 Dados do Fechamento Diário disponíveis!</div>
-            <div style={{fontSize:12,color:T.muted}}>Faturamento e Vendas do mês <strong>{monthLabel(prefill.mes)}</strong> foram importados automaticamente.</div>
-          </div>
-          <button onClick={applyPrefill} style={{background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontSize:13,fontWeight:600,flexShrink:0}}>Importar e Preencher</button>
-          <button onClick={()=>setPrefill(null)} style={{background:"transparent",color:T.muted,border:"none",cursor:"pointer",padding:4}}><X size={15}/></button>
-        </div>
-      )}
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#3b82f615",border:"1px solid #3b82f640",borderRadius:10,marginBottom:16}}>
+        <BarChart2 size={18} color="#3b82f6"/>
+        <div style={{fontSize:12.5,color:T.sub}}>Estes dados vêm direto do <strong style={{color:T.text}}>Fechamento Diário</strong> — a seção "📦 Produtos do Mês", preenchida ao usar <strong style={{color:T.text}}>Fechar Mês</strong>. Não há lançamento duplicado aqui.</div>
+      </div>
 
       {/* Product metas panel */}
       {showPMetas&&(
         <div style={{...cSt,borderTop:"3px solid #f59e0b",marginBottom:16}}>
-          <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>⚙ Metas por Produto (R$)</div>
-          <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Configure a meta de faturamento individual para cada tipo de produto.</div>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>⚙ Metas por Material (R$)</div>
+          <div style={{fontSize:12,color:T.muted,marginBottom:16}}>Configure a meta de faturamento individual para cada tipo de material (somando todas as ligas).</div>
           <div className="dg-grid dg-grid-6" style={{display:"grid",gap:12,marginBottom:14}}>
-            {TIPOS.map(t=>(
-              <div key={t}><label style={lSt}>{t} (R$)</label><input style={iSt} value={prodMetasF[t]} onChange={setPMeta(t)} placeholder="Ex: 850000"/></div>
+            {MATERIAIS.map(m=>(
+              <div key={m}><label style={lSt}>{m} (R$)</label><input style={iSt} value={prodMetasF[m]} onChange={setPMeta(m)} placeholder="Ex: 850000"/></div>
             ))}
           </div>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,alignItems:"center"}}>
@@ -1763,47 +1853,11 @@ function FechamentoMensal({T,currentUser}) {
         </div>
       )}
 
-      {/* Launch form */}
-      {showForm&&(
-        <div style={{...cSt,borderTop:"3px solid #3b82f6",marginBottom:16}}>
-          <div style={{fontSize:15,fontWeight:600,marginBottom:16,color:T.text}}>Lançamento Mensal</div>
-          <div className="dg-grid dg-grid-5" style={{display:"grid",gap:12,marginBottom:16}}>
-            <div><label style={lSt}>Mês de Referência *</label><input type="month" style={iSt} value={form.mes} onChange={setField("mes")}/></div>
-            <div><label style={lSt}>Faturamento R$</label><input style={iSt} value={form.fRS} onChange={setField("fRS")} placeholder="Ex: 2850000"/></div>
-            <div><label style={lSt}>Faturamento KG</label><input style={iSt} value={form.fKG} onChange={setField("fKG")} placeholder="Ex: 185400"/></div>
-            <div><label style={lSt}>Vendido R$</label><input style={iSt} value={form.vRS} onChange={setField("vRS")} placeholder="Ex: 3100000"/></div>
-            <div><label style={lSt}>Vendido KG</label><input style={iSt} value={form.vKG} onChange={setField("vKG")} placeholder="Ex: 201200"/></div>
-          </div>
-          <div style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:600,color:T.text,marginBottom:10}}>Faturamento por Produto</div>
-            <div style={{border:`1px solid ${T.border}`,borderRadius:8,overflow:"hidden"}}>
-              <div style={{display:"grid",gridTemplateColumns:"140px 1fr 1fr",background:T.card2}}>
-                {["Produto","Faturado R$","Faturado KG"].map(h=><div key={h} style={{padding:"8px 12px",fontSize:11,color:T.muted,fontWeight:600,textTransform:"uppercase",letterSpacing:.4}}>{h}</div>)}
-              </div>
-              {form.produtos.map((p,i)=>(
-                <div key={p.tipo} style={{display:"grid",gridTemplateColumns:"140px 1fr 1fr",borderTop:`1px solid ${T.border}`}}>
-                  <div style={{padding:"8px 12px",color:T.sub,fontSize:13,display:"flex",alignItems:"center",gap:6}}>
-                    <div style={{width:8,height:8,borderRadius:"50%",background:COLORS[i%COLORS.length],flexShrink:0}}/>
-                    {p.tipo}
-                  </div>
-                  <div style={{padding:5}}><input style={{...iSt,padding:"6px 10px"}} value={p.rs} onChange={setProd(i,"rs")} placeholder="0,00"/></div>
-                  <div style={{padding:5}}><input style={{...iSt,padding:"6px 10px"}} value={p.kg} onChange={setProd(i,"kg")} placeholder="0,00"/></div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{display:"flex",justifyContent:"flex-end",gap:8,alignItems:"center"}}>
-            <button onClick={()=>{setShowForm(false);setForm(mkMF());}} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>Cancelar</button>
-            <button onClick={saveRecord} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:600,fontSize:14}}><Save size={14}/> Salvar</button>
-          </div>
-        </div>
-      )}
-
       {current ? (
         <>
           {/* Summary KPI cards */}
           <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
-            {[{title:"Faturamento R$",value:fmtRS(current.faturamentoRS),sub:current.label,emoji:"💵",color:"#3b82f6"},{title:"Faturamento KG",value:fmtN(current.faturamentoKG)+" kg",sub:"Total expedido",emoji:"⚖️",color:"#06b6d4"},{title:"Vendido R$",value:fmtRS(current.vendidoRS),sub:"Total pedidos",emoji:"🧾",color:"#10b981"},{title:"Vendido KG",value:fmtN(current.vendidoKG)+" kg",sub:"Pedidos em peso",emoji:"📦",color:"#8b5cf6"}].map(({title,value,sub,emoji,color})=>(
+            {[{title:"Faturamento R$",value:fmtRS(current.faturamentoRS),sub:current.label,emoji:"💵",color:"#3b82f6"},{title:"Faturamento KG",value:fmtN(current.faturamentoKG)+" kg",sub:"Total expedido",emoji:"⚖️",color:"#06b6d4"},{title:"Vendido R$",value:fmtRS(current.vendidoRS),sub:"Total vendido",emoji:"🧾",color:"#10b981"},{title:"Vendido KG",value:fmtN(current.vendidoKG)+" kg",sub:"Vendido em peso",emoji:"📦",color:"#8b5cf6"}].map(({title,value,sub,emoji,color})=>(
               <div key={title} className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                   <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
@@ -1833,17 +1887,17 @@ function FechamentoMensal({T,currentUser}) {
             </div>
           )}
 
-          {/* Product ranking */}
+          {/* Product ranking (por material) */}
           {current.produtos&&current.produtos.length>0&&(
             <div style={{...cSt,marginBottom:16}}>
               <ProductRanking current={current} previous={previous} prodMetas={prodMetas} T={T}/>
             </div>
           )}
 
-          {/* Product mix pie */}
-          {current.produtos&&current.produtos.some(p=>p.rs)&&(
+          {/* Product mix pie (detalhado por material×liga) */}
+          {current.produtosDetalhado&&current.produtosDetalhado.some(p=>p.rs)&&(
             <div style={{...cSt,marginBottom:16}}>
-              <ProductMixPie produtos={current.produtos} T={T}/>
+              <ProductMixPie produtos={current.produtosDetalhado} T={T}/>
             </div>
           )}
 
@@ -1870,7 +1924,7 @@ function FechamentoMensal({T,currentUser}) {
             <div style={{fontSize:14,fontWeight:600,marginBottom:14,color:T.text}}>Registros Mensais</div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-                <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>{["Mês","Fat. R$","Fat. KG","Vendido R$","Vendido KG","Salvo em",""].map(h=><th key={h} style={{padding:"10px 12px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase",letterSpacing:.5,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+                <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>{["Mês","Fat. R$","Fat. KG","Vendido R$","Vendido KG",""].map(h=><th key={h} style={{padding:"10px 12px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase",letterSpacing:.5,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
                 <tbody>{[...records].reverse().map(r=>(
                   <tr key={r.id} style={{borderBottom:`1px solid ${T.border}50`}}>
                     <td style={{padding:"11px 12px",color:"#60a5fa",fontWeight:600}}>{r.label}</td>
@@ -1878,12 +1932,16 @@ function FechamentoMensal({T,currentUser}) {
                     <td style={{padding:"11px 12px",color:T.sub}}>{fmtN(r.faturamentoKG)} kg</td>
                     <td style={{padding:"11px 12px",color:T.sub}}>{fmtRS(r.vendidoRS)}</td>
                     <td style={{padding:"11px 12px",color:T.sub}}>{fmtN(r.vendidoKG)} kg</td>
-                    <td style={{padding:"11px 12px",color:T.muted}}>{toDisplay(r.savedAt)}</td>
                     <td style={{padding:"11px 12px"}}>
-                      <div style={{display:"flex",gap:4}}>
-                        <button onClick={()=>editRecord(r)} style={{background:"#3b82f620",color:"#60a5fa",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Edit2 size={12}/></button>
-                        {canManage&&<button onClick={()=>deleteRecord(r.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>}
-                      </div>
+                      {canManage&&(confirmClear===r.id?(
+                        <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                          <span style={{fontSize:11,color:T.faint}}>Confirmar?</span>
+                          <button onClick={()=>clearMonth(r.id)} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,fontWeight:600}}>Sim</button>
+                          <button onClick={()=>setConfirmClear(null)} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>Não</button>
+                        </div>
+                      ):(
+                        <button onClick={()=>setConfirmClear(r.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}><Trash2 size={12}/></button>
+                      ))}
                     </td>
                   </tr>
                 ))}</tbody>
@@ -1895,7 +1953,7 @@ function FechamentoMensal({T,currentUser}) {
         <div style={{...cSt,textAlign:"center",padding:52}}>
           <div className="dg-empty-icon" style={{width:64,height:64,borderRadius:"50%",background:"#10b98120",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30}}>📅</div>
           <div style={{color:T.text,fontSize:16,fontWeight:600,marginBottom:6}}>Nenhum dado mensal lançado</div>
-          <div style={{color:T.faint,fontSize:13}}>Clique em <strong style={{color:"#60a5fa"}}>Lançar Mês</strong> para começar</div>
+          <div style={{color:T.faint,fontSize:13}}>Vá até o <strong style={{color:"#60a5fa"}}>Fechamento Diário</strong> e use <strong style={{color:"#60a5fa"}}>Fechar Mês</strong> para lançar os produtos.</div>
         </div>
       )}
     </>
@@ -2352,7 +2410,7 @@ export default function App() {
         <div className="dg-page" style={{padding:compact?16:24,flex:1}}>
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
           {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser}/>}
-          {page==="mensal"   &&<FechamentoMensal T={T} currentUser={currentUser}/>}
+          {page==="mensal"   &&<FechamentoMensal T={T} currentUser={currentUser} onNavigate={setPage}/>}
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
