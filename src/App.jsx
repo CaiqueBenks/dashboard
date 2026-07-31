@@ -189,8 +189,8 @@ const FERIADOS_BR = new Set([
   "2027-10-12","2027-11-02","2027-11-15","2027-11-20","2027-12-25",
 ]);
 
-const getWDInfo = (year, month, extraHols = []) => {
-  const now  = new Date(); now.setHours(23,59,59,0);
+const getWDInfo = (year, month, extraHols = [], refDate = new Date()) => {
+  const now  = new Date(refDate); now.setHours(23,59,59,0);
   const hols = new Set([...FERIADOS_BR, ...extraHols]);
   let total=0, passed=0;
   const d = new Date(year, month-1, 1);
@@ -885,7 +885,7 @@ function DiasUteisProjecao({entries,metaFaturamento,T,extraHols=[]}) {
   if(entries.length===0)return null;
   const latest=entries[entries.length-1];
   const d=new Date((latest.date||today())+"T12:00:00");
-  const wd=getWDInfo(d.getFullYear(),d.getMonth()+1,extraHols);
+  const wd=getWDInfo(d.getFullYear(),d.getMonth()+1,extraHols,d);
   const fat=latest.faturamento;
   const meta=parseBRL(metaFaturamento);
   let dailyAvg=null,projecao=null,neededPerDay=null;
@@ -978,7 +978,7 @@ function PresentMode({onExit}) {
   let projecao=null,wd=null;
   if(latest?.faturamento&&latest?.date){
     const dd=new Date(latest.date+"T12:00:00");
-    wd=getWDInfo(dd.getFullYear(),dd.getMonth()+1,extraHols);
+    wd=getWDInfo(dd.getFullYear(),dd.getMonth()+1,extraHols,dd);
     if(wd.passed>0)projecao=(latest.faturamento/wd.passed)*wd.total;
   }
   const sem=calcSem(projecao,metaFat);
@@ -1360,22 +1360,37 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   const latest=entries.length>0?entries[entries.length-1]:null;
   const hasData=!!latest;
   const metaAtr=parseBRL(metas.atrasos);
-  const pcts={fat:rawPct(latest?.faturamento,metas.faturamento),atr:rawPct(latest?.atrasos,metas.atrasos),ven:rawPct(latest?.vendas,metas.vendas),pm:rawPct(latest?.prevMes,metas.prevMes),ppx:rawPct(latest?.prevProxMes,metas.prevProxMes)};
 
-  // Semáforo
-  let semaforo=null;
-  if(latest?.faturamento&&latest?.date){
+  // Dias úteis decorridos no mês do último lançamento (para prorata da meta)
+  let wdInfo=null;
+  if(latest?.date){
     const dd=new Date(latest.date+"T12:00:00");
-    const wdInfo=getWDInfo(dd.getFullYear(),dd.getMonth()+1,extraHols);
-    if(wdInfo.passed>0){const proj=(latest.faturamento/wdInfo.passed)*wdInfo.total;semaforo=calcSem(proj,parseBRL(metas.faturamento));}
+    wdInfo=getWDInfo(dd.getFullYear(),dd.getMonth()+1,extraHols,dd);
+  }
+  // Meta do dia = meta mensal ÷ dias úteis do mês. Meta esperada até a data = meta do dia × dias úteis decorridos.
+  const metaDiaria   =(metaStr)=>{const m=parseBRL(metaStr);if(!m||!wdInfo||wdInfo.total===0)return null;return m/wdInfo.total;};
+  const metaProrated =(metaStr)=>{const md=metaDiaria(metaStr);if(md==null||!wdInfo)return null;return md*Math.max(wdInfo.passed,0)||null;};
+  const pcts={
+    fat:rawPct(latest?.faturamento,metaProrated(metas.faturamento)??metas.faturamento),
+    atr:rawPct(latest?.atrasos,    metaProrated(metas.atrasos)    ??metas.atrasos),
+    ven:rawPct(latest?.vendas,     metaProrated(metas.vendas)     ??metas.vendas),
+    pm: rawPct(latest?.prevMes,    metas.prevMes),
+    ppx:rawPct(latest?.prevProxMes,metas.prevProxMes),
+  };
+
+  // Semáforo (ritmo de faturamento projetado para o mês inteiro)
+  let semaforo=null;
+  if(latest?.faturamento&&wdInfo?.passed>0){
+    const proj=(latest.faturamento/wdInfo.passed)*wdInfo.total;
+    semaforo=calcSem(proj,parseBRL(metas.faturamento));
   }
 
   const kpiDefs=[
-    {title:"Faturamento Acumulado",val:latest?.faturamento,p:pcts.fat,color:"#3b82f6",emoji:"💰",inv:false,showSem:true},
-    {title:"Atrasos",              val:latest?.atrasos,    p:pcts.atr,color:"#ef4444",emoji:"⏰",inv:true, showSem:false},
-    {title:"Vendas Acumuladas",    val:latest?.vendas,     p:pcts.ven,color:"#10b981",emoji:"🛒",inv:false,showSem:false},
-    {title:"Prev. Fat. Mês",       val:latest?.prevMes,    p:pcts.pm, color:"#8b5cf6",emoji:"📈",inv:false,showSem:false},
-    {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,p:pcts.ppx,color:"#06b6d4",emoji:"🔮",inv:false,showSem:false},
+    {title:"Faturamento Acumulado",val:latest?.faturamento,p:pcts.fat,color:"#3b82f6",emoji:"💰",inv:false,showSem:true, prorated:true, metaRaw:metas.faturamento},
+    {title:"Atrasos",              val:latest?.atrasos,    p:pcts.atr,color:"#ef4444",emoji:"⏰",inv:true, showSem:false,prorated:true, metaRaw:metas.atrasos},
+    {title:"Vendas Acumuladas",    val:latest?.vendas,     p:pcts.ven,color:"#10b981",emoji:"🛒",inv:false,showSem:false,prorated:true, metaRaw:metas.vendas},
+    {title:"Prev. Fat. Mês",       val:latest?.prevMes,    p:pcts.pm, color:"#8b5cf6",emoji:"📈",inv:false,showSem:false,prorated:false,metaRaw:metas.prevMes},
+    {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,p:pcts.ppx,color:"#06b6d4",emoji:"🔮",inv:false,showSem:false,prorated:false,metaRaw:metas.prevProxMes},
   ];
 
   if(loading)return (
@@ -1437,13 +1452,29 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
                 : <span>Sem meta específica — usando a <strong style={{color:T.text}}>meta padrão</strong> {Object.keys(metasByMonth).length?"":"(ainda não definida)"}.</span>}
             </div>
           </div>
+          {(()=>{const[my,mm]=metaMonth.split("-").map(Number);const wdCfg=getWDInfo(my,mm,extraHols);return(
+            <div style={{display:"flex",alignItems:"center",gap:8,background:"#f59e0b12",border:"1px solid #f59e0b30",borderRadius:8,padding:"9px 12px",marginBottom:14,fontSize:12,color:T.sub}}>
+              <Calendar size={13} color="#f59e0b"/>
+              <span><strong style={{color:T.text}}>{wdCfg.total} dias úteis</strong> em {monthLabel(metaMonth+"-01")} — a meta de Faturamento, Atrasos e Vendas é dividida por esse número para calcular a meta esperada de cada dia.</span>
+            </div>
+          );})()}
           <div className="dg-grid dg-grid-5" style={{display:"grid",gap:12,marginBottom:14}}>
-            {[{k:"faturamento",label:"Faturamento"},{k:"atrasos",label:"Atrasos"},{k:"vendas",label:"Vendas"},{k:"prevMes",label:"Prev. Mês"},{k:"prevProxMes",label:"Prev. Próx. Mês"}].map(({k,label})=>(
-              <div key={k}><label style={lSt}>{label} (R$)</label><input style={iSt} value={metasForm[k]} onChange={setMetaF(k)} placeholder="Ex: 3200000"/></div>
-            ))}
+            {[{k:"faturamento",label:"Faturamento",prorated:true},{k:"atrasos",label:"Atrasos",prorated:true},{k:"vendas",label:"Vendas",prorated:true},{k:"prevMes",label:"Prev. Mês",prorated:false},{k:"prevProxMes",label:"Prev. Próx. Mês",prorated:false}].map(({k,label,prorated})=>{
+              const[my,mm]=metaMonth.split("-").map(Number);
+              const wdCfg=getWDInfo(my,mm,extraHols);
+              const mVal=parseBRL(metasForm[k]);
+              const diaria=prorated&&mVal&&wdCfg.total>0?mVal/wdCfg.total:null;
+              return (
+                <div key={k}>
+                  <label style={lSt}>{label} (R$)</label>
+                  <input style={iSt} value={metasForm[k]} onChange={setMetaF(k)} placeholder="Ex: 3200000"/>
+                  {diaria!=null&&<div style={{fontSize:10.5,color:T.faint,marginTop:4}}>≈ {fmtRS(diaria)}/dia útil</div>}
+                </div>
+              );
+            })}
           </div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:12,color:T.faint}}>Atrasos: verde quando <strong style={{color:T.text}}>abaixo</strong> da meta.</div>
+            <div style={{fontSize:12,color:T.faint}}>Faturamento, Atrasos e Vendas comparam o acumulado à meta <strong style={{color:T.text}}>prorata até a data do último lançamento</strong>. Atrasos: verde quando <strong style={{color:T.text}}>abaixo</strong> da meta do dia.</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <button onClick={()=>saveMetas(true)} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>Salvar como Padrão</button>
               <button onClick={()=>saveMetas(false)} style={{display:"flex",alignItems:"center",gap:6,background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:700,fontSize:14}}><Save size={14}/> Salvar Meta de {monthLabel(metaMonth+"-01")}</button>
@@ -1529,7 +1560,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
 
       {/* KPI Cards */}
       <div className="dg-grid dg-grid-5" style={{display:"grid",gap:14,marginBottom:16}}>
-        {kpiDefs.map(({title,val,p,color,emoji,inv,showSem})=>(
+        {kpiDefs.map(({title,val,p,color,emoji,inv,showSem,prorated,metaRaw})=>(
           <div key={title} className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:`3px solid ${color}`,minWidth:0,opacity:hasData?1:0.45}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
@@ -1537,6 +1568,9 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
             </div>
             <div style={{fontSize:20,fontWeight:700,color:T.text,wordBreak:"break-word"}}>{val!=null?fmtRS(val):"—"}</div>
             <div style={{fontSize:11,color:T.muted,marginTop:2}}>{hasData?`Até ${toDisplay(latest.date)}`:"Sem dados"}</div>
+            {prorated&&wdInfo&&metaDiaria(metaRaw)!=null&&(
+              <div style={{fontSize:10.5,color:T.faint,marginTop:3}}>Meta do dia: {fmtRS(metaDiaria(metaRaw))} · {wdInfo.passed}/{wdInfo.total}d úteis</div>
+            )}
             {showSem&&semaforo&&(
               <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"5px 10px",background:semaforo.color+"15",borderRadius:8}}>
                 <span style={{fontSize:13}}>{semaforo.emoji}</span>
@@ -2219,7 +2253,6 @@ export default function App() {
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon}]}]:[]),
-    {section:"Em Breve",items:[{id:"__s1",label:"Financeiro",icon:DollarSign,disabled:true},{id:"__s2",label:"Estoque",icon:ShoppingCart,disabled:true}]},
   ];
   const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
