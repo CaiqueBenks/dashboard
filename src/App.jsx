@@ -1378,7 +1378,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
     let list=[];
     try{const ex=await window.storage.get("closed_months");list=ex?JSON.parse(ex.value):[];}catch(_){}
     try{await window.storage.set("closed_months",JSON.stringify([...list.filter(m=>m.id!==monthKey),record]));}catch(_){}
-    // Produtos do mês (Vendido/Faturado por material×liga) — fonte única também usada pelo Fechamento Mensal
+    // Produtos do mês (Vendido/Faturado por material×liga) — fonte única também usada em Meses Fechados
     const validRows=produtosMes.filter(r=>parseBRL(r.vendidoRS)||parseBRL(r.vendidoKG)||parseBRL(r.faturadoRS)||parseBRL(r.faturadoKG));
     await persistProdutosMes(monthKey,validRows);
     if(clearAfter){setEntries([]);await persist([]);}
@@ -1549,7 +1549,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
       {showFechar&&entries.length>0&&(
         <div style={{...cSt,borderTop:"3px solid #10b981",marginBottom:16}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}><Archive size={18} color="#10b981"/><div style={{fontSize:15,fontWeight:700,color:T.text}}>Fechar Mês</div></div>
-          <div style={{fontSize:13,color:T.muted,marginBottom:16}}>Irá arquivar <strong style={{color:T.text}}>{entries.length} lançamento(s)</strong> em <strong style={{color:"#10b981"}}>Meses Fechados</strong> e disponibilizar os dados para o Fechamento Mensal.</div>
+          <div style={{fontSize:13,color:T.muted,marginBottom:16}}>Irá arquivar <strong style={{color:T.text}}>{entries.length} lançamento(s)</strong> em <strong style={{color:"#10b981"}}>Meses Fechados</strong>, junto com a análise de produtos.</div>
           <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:16}}>
             <div style={{fontSize:12,color:T.muted,marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>Resumo do Período</div>
             <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12}}>
@@ -1564,7 +1564,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
               <div style={{fontSize:13,fontWeight:600,color:T.text}}>📦 Produtos do Mês — Vendido e Faturado</div>
               <button onClick={addProdRow} style={{display:"flex",alignItems:"center",gap:5,background:"#3b82f620",color:"#3b82f6",border:"none",borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}><Plus size={12}/> Produto</button>
             </div>
-            <div style={{fontSize:11.5,color:T.faint,marginBottom:10}}>Um produto vendido pode ser faturado só no mês seguinte — por isso Vendido e Faturado são lançados separadamente. Esses dados alimentam o Fechamento Mensal automaticamente.</div>
+            <div style={{fontSize:11.5,color:T.faint,marginBottom:10}}>Um produto vendido pode ser faturado só no mês seguinte — por isso Vendido e Faturado são lançados separadamente. Esses dados alimentam automaticamente a análise de produtos em Meses Fechados.</div>
             {prodLoading?(
               <div style={{padding:16,textAlign:"center",color:T.faint,fontSize:12}}>Carregando produtos do mês…</div>
             ):(
@@ -1717,7 +1717,6 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   );
 }
 
-// ── FechamentoMensal ─────────────────────────────────────────
 // ── BibliotecaPage ───────────────────────────────────────────
 function BibliotecaPage({T}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
@@ -2146,13 +2145,12 @@ export default function App() {
     {section:"Principal",items:[{id:"home",label:"Início",icon:HomeIcon}]},
     {section:"Painel de Vendas",items:[
       {id:"diario",   label:"Fechamento Diário", icon:BarChart2,  alertDot:atrasoAlert},
-      {id:"mensal",   label:"Fechamento Mensal", icon:TrendingUp},
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",mensal:"Fechamento Mensal",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -2250,7 +2248,6 @@ export default function App() {
         <div className="dg-page" style={{padding:compact?16:24,flex:1}}>
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
           {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser}/>}
-          {page==="mensal"   &&<FechamentoMensal T={T} currentUser={currentUser} onNavigate={setPage}/>}
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey} currentUser={currentUser}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
