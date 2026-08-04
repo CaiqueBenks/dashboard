@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie } from "recharts";
+import * as XLSX from "xlsx";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie, ComposedChart, Line } from "recharts";
 import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X, Menu, LogOut, UserPlus, Shield, User, Eye, EyeOff, Lock, Users as UsersIcon } from "lucide-react";
 
 // ─── CSS Global ───────────────────────────────────────────────
@@ -222,6 +223,13 @@ const exportCSV = (rows,headers,filename) => {
   const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(";")).join("\n");
   const uri="data:text/csv;charset=utf-8,\uFEFF"+encodeURIComponent(csv);
   const a=document.createElement("a"); a.href=uri; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+};
+const exportXLSX = (rows,headers,filename,sheetName="Dados") => {
+  const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws["!cols"]=headers.map((h,i)=>({wch:Math.max(12,String(h).length+2,...rows.map(r=>String(r[i]??'').length+2))}));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,sheetName);
+  XLSX.writeFile(wb,filename);
 };
 let _pdfCb=null;
 const exportPDF=(html,title)=>{ if(_pdfCb)_pdfCb(html,title); };
@@ -639,15 +647,23 @@ function Top5Days({ entries, T }) {
 }
 
 // ── DailyChart ───────────────────────────────────────────────
-function DailyChart({entries,T}) {
+function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
   const [active, setActive] = useState(["faturamento","prevMes"]);
   const [range,  setRange]  = useState(30);
+  const [showMeta, setShowMeta] = useState(true);
   const toggle = (k) => setActive(p => p.includes(k) ? p.filter(x=>x!==k) : [...p,k]);
   const filtered = range === 0 ? entries : entries.slice(-range);
-  const data = filtered.map(e => ({
-    dia:toDisplay(e.date), faturamento:e.faturamento, atrasos:e.atrasos,
-    vendas:e.vendas, prevMes:e.prevMes, prevProxMes:e.prevProxMes,
-  }));
+  const metaVal = parseBRL(metaFaturamento);
+  const data = filtered.map(e => {
+    let metaLinha=null;
+    if(metaVal&&e.date){
+      const d=new Date(e.date+"T12:00:00");
+      const wd=getWDInfo(d.getFullYear(),d.getMonth()+1,extraHols,d);
+      if(wd.total>0)metaLinha=(metaVal/wd.total)*wd.passed;
+    }
+    return { dia:toDisplay(e.date), faturamento:e.faturamento, atrasos:e.atrasos,
+      vendas:e.vendas, prevMes:e.prevMes, prevProxMes:e.prevProxMes, metaLinha };
+  });
   const ttStyle = {background:T.card, border:`1px solid ${T.border}`, borderRadius:8, color:T.text};
   const RANGES  = [{l:"7d",v:7},{l:"15d",v:15},{l:"30d",v:30},{l:"Tudo",v:0}];
   return (
@@ -680,12 +696,22 @@ function DailyChart({entries,T}) {
             </button>
           );
         })}
+        {metaVal>0&&(
+          <button onClick={()=>setShowMeta(!showMeta)} style={{
+            display:"flex", alignItems:"center", gap:5, padding:"5px 12px",
+            borderRadius:20, fontSize:12, fontWeight:600, cursor:"pointer",
+            background: showMeta?"#f59e0b25":"transparent", color:showMeta?"#f59e0b":T.faint,
+            border:`1.5px dashed ${showMeta?"#f59e0b":T.border}`, transition:"all .15s",
+          }}>
+            <span style={{ width:8,height:8,borderRadius:"50%",background:showMeta?"#f59e0b":T.border,display:"inline-block",flexShrink:0 }}/>Meta Prorata
+          </button>
+        )}
       </div>
       {active.length===0 ? (
         <div style={{textAlign:"center",padding:"32px 0",color:T.faint,fontSize:13}}>Selecione ao menos um KPI.</div>
       ):(
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={data}>
+          <ComposedChart data={data}>
             <defs>{KPI_OPTIONS.map(({key,color})=>(
               <linearGradient key={key} id={`g_${key}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%"  stopColor={color} stopOpacity={0.25}/><stop offset="95%" stopColor={color} stopOpacity={0}/>
@@ -694,12 +720,15 @@ function DailyChart({entries,T}) {
             <CartesianGrid strokeDasharray="3 3" stroke={T.border}/>
             <XAxis dataKey="dia" tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false}/>
             <YAxis tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>"R$"+(v>=1000000?(v/1000000).toFixed(1)+"M":(v/1000).toFixed(0)+"k")}/>
-            <Tooltip formatter={(v,n)=>[fmtRS(v),KPI_OPTIONS.find(o=>o.key===n)?.label||n]} contentStyle={ttStyle} labelStyle={{color:T.sub}}/>
-            <Legend wrapperStyle={{color:T.sub,fontSize:12}} formatter={n=>KPI_OPTIONS.find(o=>o.key===n)?.label||n}/>
+            <Tooltip formatter={(v,n)=>[fmtRS(v),n==="metaLinha"?"Meta Prorata":(KPI_OPTIONS.find(o=>o.key===n)?.label||n)]} contentStyle={ttStyle} labelStyle={{color:T.sub}}/>
+            <Legend wrapperStyle={{color:T.sub,fontSize:12}} formatter={n=>n==="metaLinha"?"Meta Prorata":(KPI_OPTIONS.find(o=>o.key===n)?.label||n)}/>
             {KPI_OPTIONS.filter(o=>active.includes(o.key)).map(({key,color})=>(
               <Area key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2} fill={`url(#g_${key})`} dot={{fill:color,r:4}} activeDot={{r:6}}/>
             ))}
-          </AreaChart>
+            {showMeta&&metaVal>0&&(
+              <Line type="monotone" dataKey="metaLinha" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 4" dot={false} activeDot={{r:5}} connectNulls/>
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       )}
     </div>
@@ -1086,6 +1115,8 @@ function HomePage({T,onNavigate}) {
   const [metasByMonth,setMetasByMonth]=useState({});
   const [closed, setClosed] =useState([]);
   const [loading,setLoading]=useState(true);
+  const [cardOrder,setCardOrder]=useState(null); // array de labels, ordem preferida do usuário
+  const [dragId,   setDragId]   =useState(null);
   useEffect(()=>{
     (async()=>{
       try{const r=await window.storage.get("diario_entries");if(r)setDaily(JSON.parse(r.value));}catch(_){}
@@ -1094,6 +1125,7 @@ function HomePage({T,onNavigate}) {
       if(Object.keys(mbm).length===0){try{const m=await window.storage.get("diario_metas");if(m)mbm={default:JSON.parse(m.value)};}catch(_){}}
       setMetasByMonth(mbm);
       try{const r=await window.storage.get("closed_months");if(r)setClosed(JSON.parse(r.value));}catch(_){}
+      try{const r=await window.storage.get("home_card_order");if(r)setCardOrder(JSON.parse(r.value));}catch(_){}
       setLoading(false);
     })();
   },[]);
@@ -1123,7 +1155,20 @@ function HomePage({T,onNavigate}) {
     {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true},
     {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",emoji:"🛒",  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
     {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",emoji:"🗂️",        sub:"no histórico",isRS:false},
-  ];
+  ].sort((a,b)=>{
+    if(!cardOrder)return 0;
+    const ia=cardOrder.indexOf(a.label),ib=cardOrder.indexOf(b.label);
+    if(ia===-1&&ib===-1)return 0; if(ia===-1)return 1; if(ib===-1)return -1;
+    return ia-ib;
+  });
+  const reorderCards=(fromLabel,toLabel)=>{
+    if(fromLabel===toLabel)return;
+    const labels=summaryCards.map(c=>c.label);
+    const from=labels.indexOf(fromLabel),to=labels.indexOf(toLabel);
+    const next=[...labels]; next.splice(from,1); next.splice(to,0,fromLabel);
+    setCardOrder(next);
+    window.storage.set("home_card_order",JSON.stringify(next)).catch(()=>{});
+  };
   const quickLinks=[
     {id:"diario",    label:"Fechamento Diário", emoji:"📊",  color:"#3b82f6", desc:"Lançar KPIs e fechar o mês"},
     {id:"fechados",  label:"Meses Fechados",    emoji:"🗄️",    color:"#8b5cf6", desc:"Histórico de meses arquivados"},
@@ -1148,11 +1193,22 @@ function HomePage({T,onNavigate}) {
         </div>
       )}
 
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,color:T.faint,fontSize:11.5}}>
+        <Menu size={12}/> Arraste os cards pelo cabeçalho para reordenar
+      </div>
       <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
         {summaryCards.map(({label,val,color,emoji,sub,isRS})=>(
-          <div key={label} className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`}}>
+          <div key={label}
+            draggable
+            onDragStart={()=>setDragId(label)}
+            onDragOver={e=>e.preventDefault()}
+            onDrop={()=>{reorderCards(dragId,label);setDragId(null);}}
+            onDragEnd={()=>setDragId(null)}
+            className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`,opacity:dragId===label?0.4:1,cursor:"grab"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{label}</div>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8,display:"flex",alignItems:"center",gap:5}}>
+                <Menu size={10} style={{opacity:.5}}/>{label}
+              </div>
               <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
             <div style={{fontSize:22,fontWeight:700,color}}>{val!=null?(isRS?fmtRS(val):fmtN(val)):"—"}</div>
@@ -1388,6 +1444,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   };
 
   const doCSV=()=>exportCSV(entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento R$","Atrasos R$","Vendas R$","Prev.Mês R$","Prev.Próx.Mês R$","Obs"],"fechamento_diario.csv");
+  const doXLSX=()=>exportXLSX(entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento R$","Atrasos R$","Vendas R$","Prev.Mês R$","Prev.Próx.Mês R$","Obs"],"fechamento_diario.xlsx","Fechamento Diário");
   const doPDF=()=>exportPDF(`<h2>Fechamento Diário</h2><p>Gerado em ${new Date().toLocaleDateString("pt-BR")}</p><table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Observações</th></tr></thead><tbody>${entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,"Fechamento Diário");
 
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
@@ -1452,6 +1509,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
           {entries.length>0&&(
             <div style={{display:"flex",gap:4}}>
               <button onClick={doCSV} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> CSV</button>
+              <button onClick={doXLSX} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> Excel</button>
               <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
             </div>
           )}
@@ -1662,7 +1720,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
 
       {entries.length>0&&(
         <div style={{...cSt,marginBottom:16}}>
-          <DailyChart entries={entries} T={T}/>
+          <DailyChart entries={entries} T={T} metaFaturamento={metas.faturamento} extraHols={extraHols}/>
         </div>
       )}
       {entries.length>1&&(
@@ -1763,6 +1821,8 @@ function MesesFechados({T,reloadKey,currentUser}) {
   const [prodMetas,       setProdMetas]       =useState(EMPTY_PROD_METAS);
   const [prodMetasF,      setProdMetasF]      =useState(EMPTY_PROD_METAS);
   const [showPMetas,      setShowPMetas]      =useState(false);
+  const [metasByMonth,    setMetasByMonth]     =useState({});
+  const [holidays,        setHolidays]         =useState([]);
   const [loading, setLoading] =useState(true);
   const [selected,setSelected]=useState(null);
   useEffect(()=>{
@@ -1771,6 +1831,8 @@ function MesesFechados({T,reloadKey,currentUser}) {
       try{const r=await window.storage.get("closed_months");setMonths(r?JSON.parse(r.value):[]);}catch(_){setMonths([]);}
       try{const r=await window.storage.get("diario_produtos_mensais");if(r)setProdutosByMonth(JSON.parse(r.value));}catch(_){}
       try{const r=await window.storage.get("mensal_prod_metas");if(r){const v=JSON.parse(r.value);setProdMetas(v);setProdMetasF(v);}}catch(_){}
+      try{const r=await window.storage.get("diario_metas_by_month");if(r)setMetasByMonth(JSON.parse(r.value));}catch(_){}
+      try{const r=await window.storage.get("custom_holidays");if(r)setHolidays(JSON.parse(r.value).map(h=>h.date));}catch(_){}
       setLoading(false);
     })();
   },[reloadKey]);
@@ -1819,6 +1881,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
       {label:"Prev. Próx. Mês",  curr:s.summary.prevProxMes,prevVal:prev?.summary.prevProxMes,color:"#06b6d4",inv:false},
     ];
     const doCSV=()=>exportCSV(s.entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento","Atrasos","Vendas","Prev.Mês","Prev.Próx.Mês","Obs"],`fechamento_${s.label}.csv`);
+    const doXLSX=()=>exportXLSX(s.entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento","Atrasos","Vendas","Prev.Mês","Prev.Próx.Mês","Obs"],`fechamento_${s.label}.xlsx`,s.label);
     const doPDF=()=>exportPDF(`<h2>Fechamento — ${s.label}</h2><p>Gerado em ${new Date().toLocaleDateString("pt-BR")}</p><table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Obs</th></tr></thead><tbody>${s.entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,`Fechamento ${s.label}`);
 
     const prodCurr=prodSummary(s.id);
@@ -1836,6 +1899,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
           </div>
           <div style={{display:"flex",gap:4}}>
             <button onClick={doCSV} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> CSV</button>
+            <button onClick={doXLSX} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> Excel</button>
             <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
           </div>
         </div>
@@ -1853,7 +1917,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
           </div>
         </div>
         <div style={{...cSt,borderLeft:"4px solid #ef4444",marginBottom:16}}><AtrasoChart entries={s.entries} metaValue={null} T={T}/></div>
-        <div style={{...cSt,marginBottom:16}}><DailyChart entries={s.entries} T={T}/></div>
+        <div style={{...cSt,marginBottom:16}}><DailyChart entries={s.entries} T={T} metaFaturamento={(metasByMonth[s.id]||metasByMonth.default||{}).faturamento} extraHols={holidays}/></div>
         {s.entries.length>1&&<div style={{...cSt,marginBottom:16}}><WeekdayChart entries={s.entries} T={T}/></div>}
 
         {prodCurr&&(
