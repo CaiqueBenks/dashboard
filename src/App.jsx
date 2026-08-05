@@ -683,8 +683,12 @@ function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
   const [active, setActive] = useState(["faturamento","prevMes"]);
   const [range,  setRange]  = useState(30);
   const [showMeta, setShowMeta] = useState(true);
+  const [customFrom,setCustomFrom]=useState("");
+  const [customTo,  setCustomTo]  =useState("");
   const toggle = (k) => setActive(p => p.includes(k) ? p.filter(x=>x!==k) : [...p,k]);
-  const filtered = range === 0 ? entries : entries.slice(-range);
+  const filtered = range==="custom"
+    ? entries.filter(e=>(!customFrom||e.date>=customFrom)&&(!customTo||e.date<=customTo))
+    : (range === 0 ? entries : entries.slice(-range));
   const metaVal = parseBRL(metaFaturamento);
   const data = filtered.map(e => {
     let metaLinha=null;
@@ -697,12 +701,12 @@ function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
       vendas:e.vendas, prevMes:e.prevMes, prevProxMes:e.prevProxMes, metaLinha };
   });
   const ttStyle = {background:T.card, border:`1px solid ${T.border}`, borderRadius:8, color:T.text};
-  const RANGES  = [{l:"7d",v:7},{l:"15d",v:15},{l:"30d",v:30},{l:"Tudo",v:0}];
+  const RANGES  = [{l:"7d",v:7},{l:"15d",v:15},{l:"30d",v:30},{l:"Tudo",v:0},{l:"Personalizado",v:"custom"}];
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:8 }}>
         <div style={{ fontSize:14, fontWeight:600, color:T.text }}>Evolução por Dia</div>
-        <div style={{ display:"flex", gap:4 }}>
+        <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
           {RANGES.map(({l,v}) => (
             <button key={v} onClick={() => setRange(v)} style={{
               padding:"4px 10px", borderRadius:6, fontSize:12, cursor:"pointer",
@@ -714,6 +718,14 @@ function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
           ))}
         </div>
       </div>
+      {range==="custom"&&(
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
+          <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",color:T.text,fontSize:12.5}}/>
+          <span style={{fontSize:12,color:T.faint}}>até</span>
+          <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",color:T.text,fontSize:12.5}}/>
+          {(customFrom||customTo)&&<button onClick={()=>{setCustomFrom("");setCustomTo("");}} style={{background:"transparent",border:"none",color:T.faint,fontSize:12,cursor:"pointer",textDecoration:"underline"}}>Limpar</button>}
+        </div>
+      )}
       <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
         {KPI_OPTIONS.map(({key,label,color}) => {
           const on = active.includes(key);
@@ -1182,6 +1194,9 @@ function HomePage({T,onNavigate}) {
   const currVendas=latest?.vendas;
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
 
+  // Lembrete: existe lançamento de um mês anterior ao atual que ainda não foi fechado?
+  const monthNotClosed=latest&&activeMonth<today().slice(0,7)?activeMonth:null;
+
   const summaryCards=[
     {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",emoji:"💰",   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
     {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true},
@@ -1213,6 +1228,17 @@ function HomePage({T,onNavigate}) {
         <div style={{fontSize:22,fontWeight:700,color:T.text,marginBottom:4}}>{getGreeting()}! 👋</div>
         <div style={{fontSize:14,color:T.muted,textTransform:"capitalize"}}>{getDynDate()}</div>
       </div>
+
+      {monthNotClosed&&(
+        <div onClick={()=>onNavigate("diario")} style={{display:"flex",alignItems:"center",gap:12,background:"#f59e0b15",border:"1px solid #f59e0b50",borderRadius:10,padding:"14px 16px",marginBottom:20,cursor:"pointer"}}>
+          <span style={{fontSize:22,flexShrink:0}}>⏰</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13.5,fontWeight:600,color:"#f59e0b"}}>{monthLabel(monthNotClosed+"-01")} já terminou e ainda não foi fechado</div>
+            <div style={{fontSize:12,color:T.muted,marginTop:2}}>Vá até o Fechamento Diário e use "Fechar Mês" para arquivar os dados.</div>
+          </div>
+          <span style={{fontSize:12,color:"#f59e0b",fontWeight:600,flexShrink:0}}>Resolver →</span>
+        </div>
+      )}
 
       {atrasoAlt&&(
         <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",background:"#ef444415",border:"1px solid #ef4444",borderRadius:10,marginBottom:20}}>
@@ -1398,6 +1424,27 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
 
   const persist  =async(d)=>{try{await window.storage.set("diario_entries",JSON.stringify(d));}catch(_){}};
   const setField =(k)=>(e)=>setForm(p=>({...p,[k]:e.target.value}));
+
+  // Faturamento e Vendas são campos acumulados — nunca deveriam cair em relação ao lançamento vizinho.
+  // Retorna avisos (não bloqueia o salvamento, apenas alerta contra erro de digitação).
+  const checkMonotonic=(dateStr,fatVal,venVal,excludeId)=>{
+    if(!dateStr)return[];
+    const others=entries.filter(e=>e.id!==excludeId).sort((a,b)=>a.date.localeCompare(b.date));
+    const prevE=[...others].reverse().find(e=>e.date<dateStr);
+    const nextE=others.find(e=>e.date>dateStr);
+    const issues=[];
+    [{label:"Faturamento",val:fatVal},{label:"Vendas",val:venVal}].forEach(({label,val})=>{
+      if(val==null)return;
+      if(prevE&&prevE[label==="Faturamento"?"faturamento":"vendas"]!=null&&val<prevE[label==="Faturamento"?"faturamento":"vendas"]){
+        issues.push(`${label} (${fmtRS(val)}) é menor que o lançamento anterior de ${toDisplay(prevE.date)} (${fmtRS(prevE[label==="Faturamento"?"faturamento":"vendas"])})`);
+      }
+      if(nextE&&nextE[label==="Faturamento"?"faturamento":"vendas"]!=null&&val>nextE[label==="Faturamento"?"faturamento":"vendas"]){
+        issues.push(`${label} (${fmtRS(val)}) é maior que o lançamento seguinte de ${toDisplay(nextE.date)} (${fmtRS(nextE[label==="Faturamento"?"faturamento":"vendas"])})`);
+      }
+    });
+    return issues;
+  };
+  const formIssues=showForm?checkMonotonic(form.date,parseBRL(form.faturamento),parseBRL(form.vendas),editId):[];
   const setMetaF =(k)=>(e)=>setMetasForm(p=>({...p,[k]:e.target.value}));
 
   const saveMetas=async(asDefault=false)=>{
@@ -1540,6 +1587,16 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
 
   return (
     <>
+      {hasData&&canManage&&latest.date.slice(0,7)<today().slice(0,7)&&(
+        <div style={{display:"flex",alignItems:"center",gap:12,background:"#f59e0b15",border:"1px solid #f59e0b50",borderRadius:10,padding:"14px 16px",marginBottom:16}}>
+          <span style={{fontSize:22,flexShrink:0}}>⏰</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13.5,fontWeight:600,color:"#f59e0b"}}>{monthLabel(latest.date)} já terminou e ainda não foi fechado</div>
+            <div style={{fontSize:12,color:T.muted,marginTop:2}}>Use o botão "Fechar Mês" abaixo para arquivar os lançamentos deste mês.</div>
+          </div>
+          <button onClick={openFechar} style={{background:"#f59e0b",color:"#000",border:"none",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:13,flexShrink:0}}>Fechar agora</button>
+        </div>
+      )}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:8 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
           <div style={{ color:T.muted, fontSize:14 }}>
@@ -1724,6 +1781,17 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
             <label style={lSt}>Observações do dia</label>
             <input style={iSt} value={form.obs} onChange={setField("obs")} placeholder="Ex: feriado, pedido grande, variação pontual…"/>
           </div>
+          {formIssues.length>0&&(
+            <div style={{background:"#f59e0b15",border:"1px solid #f59e0b50",borderRadius:8,padding:"10px 14px",marginBottom:14}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                <span style={{fontSize:14}}>⚠️</span>
+                <span style={{fontSize:12.5,fontWeight:600,color:"#f59e0b"}}>Confira antes de salvar — pode ser erro de digitação:</span>
+              </div>
+              {formIssues.map((msg,i)=>(
+                <div key={i} style={{fontSize:12,color:T.sub,marginLeft:20}}>• {msg}</div>
+              ))}
+            </div>
+          )}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div style={{fontSize:12,color:T.faint}}>* Valores acumulados até a data selecionada</div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
