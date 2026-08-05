@@ -297,6 +297,38 @@ function ToastContainer({toasts}) {
   );
 }
 
+// ── OnboardingModal: fluxo guiado para novos Operadores ────────
+function OnboardingModal({T,userName,onDismiss}) {
+  const steps=[
+    {emoji:"📊",title:"1. Lance os KPIs do dia",desc:"No Fechamento Diário, registre Faturamento, Atrasos, Vendas e Previsões acumulados do dia."},
+    {emoji:"📦",title:"2. Feche o mês",desc:"No fim do mês, use \"Fechar Mês\" e, se for Admin, lance também os produtos (Vendido e Faturado por material e liga)."},
+    {emoji:"🗂️",title:"3. Consulte em Meses Fechados",desc:"Todo o histórico, comparativos e análises de produtos ficam arquivados e disponíveis para consulta."},
+  ];
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div className="dg-page" style={{width:"100%",maxWidth:460,background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:32,boxShadow:"0 20px 50px rgba(0,0,0,.35)"}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:34,marginBottom:10}}>👋</div>
+          <div style={{fontSize:18,fontWeight:700,color:T.text}}>Bem-vindo(a), {userName}!</div>
+          <div style={{fontSize:13,color:T.muted,marginTop:4}}>Veja rapidinho como funciona o fluxo do dashboard:</div>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:26}}>
+          {steps.map(s=>(
+            <div key={s.title} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+              <div style={{fontSize:22,flexShrink:0}}>{s.emoji}</div>
+              <div>
+                <div style={{fontSize:13.5,fontWeight:600,color:T.text,marginBottom:2}}>{s.title}</div>
+                <div style={{fontSize:12.5,color:T.sub,lineHeight:1.5}}>{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onDismiss} style={{width:"100%",background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:14}}>Entendi, vamos começar!</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Shared UI ────────────────────────────────────────────────
 
 // ── AuthScreen: login OU criação do primeiro admin (first-run) ──
@@ -1454,6 +1486,16 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   const hasData=!!latest;
   const metaAtr=parseBRL(metas.atrasos);
 
+  // Incrementos diários reais (o campo faturamento é acumulado) → ticket médio e melhor dia
+  const dailyDeltas=entries.map((e,i)=>{
+    if(e.faturamento==null)return null;
+    const prev=i>0&&entries[i-1].faturamento!=null?entries[i-1].faturamento:0;
+    const d=e.faturamento-prev;
+    return d>=0?{date:e.date,delta:d}:null;
+  }).filter(Boolean);
+  const ticketMedio=dailyDeltas.length?dailyDeltas.reduce((s,d)=>s+d.delta,0)/dailyDeltas.length:null;
+  const melhorDia=dailyDeltas.length?dailyDeltas.reduce((a,b)=>b.delta>a.delta?b:a):null;
+
   // Dias úteis decorridos no mês do último lançamento (para prorata da meta)
   let wdInfo=null;
   if(latest?.date){
@@ -1718,6 +1760,27 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
 
       {hasData&&<DiasUteisProjecao entries={entries} metaFaturamento={metas.faturamento} T={T} extraHols={extraHols}/>}
 
+      {dailyDeltas.length>1&&(
+        <div className="dg-grid dg-grid-2" style={{display:"grid",gap:14,marginBottom:16}}>
+          <div className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:"3px solid #f59e0b"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:16}}>🎯</span>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5}}>Ticket Médio Diário</div>
+            </div>
+            <div style={{fontSize:20,fontWeight:700,color:T.text}}>{fmtRS(ticketMedio)}</div>
+            <div style={{fontSize:11,color:T.faint,marginTop:2}}>Média do incremento diário de faturamento ({dailyDeltas.length} dias)</div>
+          </div>
+          <div className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:"3px solid #10b981"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:16}}>🏆</span>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5}}>Melhor Dia do Mês</div>
+            </div>
+            <div style={{fontSize:20,fontWeight:700,color:T.text}}>{fmtRS(melhorDia?.delta)}</div>
+            <div style={{fontSize:11,color:T.faint,marginTop:2}}>{melhorDia?toDisplay(melhorDia.date):"—"}</div>
+          </div>
+        </div>
+      )}
+
       {entries.length>0&&(
         <div style={{...cSt,marginBottom:16}}>
           <DailyChart entries={entries} T={T} metaFaturamento={metas.faturamento} extraHols={extraHols}/>
@@ -1825,6 +1888,8 @@ function MesesFechados({T,reloadKey,currentUser}) {
   const [holidays,        setHolidays]         =useState([]);
   const [loading, setLoading] =useState(true);
   const [selected,setSelected]=useState(null);
+  const [editProd,  setEditProd]  =useState(false);
+  const [editRows,  setEditRows]  =useState([]);
   useEffect(()=>{
     (async()=>{
       setLoading(true);
@@ -1861,6 +1926,37 @@ function MesesFechados({T,reloadKey,currentUser}) {
     return{faturamentoRS:sum("faturadoRS"),faturamentoKG:sum("faturadoKG"),vendidoRS:sum("vendidoRS"),vendidoKG:sum("vendidoKG"),produtos:porMaterial,produtosDetalhado:detalhado};
   };
 
+  const openEditProd=(monthKey)=>{
+    const rows=produtosByMonth[monthKey];
+    setEditRows(rows&&rows.length>0?rows:[mkProdRow()]);
+    setEditProd(true);
+  };
+  const addEditRow    =()=>setEditRows(p=>[...p,mkProdRow()]);
+  const removeEditRow =(id)=>setEditRows(p=>p.filter(r=>r.id!==id));
+  const setEditField  =(id,k)=>(e)=>setEditRows(p=>p.map(r=>r.id===id?{...r,[k]:e.target.value}:r));
+  const saveEditRows=async(monthKey)=>{
+    const validRows=editRows.filter(r=>parseBRL(r.vendidoRS)||parseBRL(r.vendidoKG)||parseBRL(r.faturadoRS)||parseBRL(r.faturadoKG));
+    const updated={...produtosByMonth,[monthKey]:validRows};
+    setProdutosByMonth(updated);
+    try{await window.storage.set("diario_produtos_mensais",JSON.stringify(updated));}catch(_){}
+    setEditProd(false);
+    toast(`Produtos de ${monthLabel(monthKey+"-01")} atualizados!`);
+  };
+
+  // Taxa de metas atingidas (só considera meses com meta de faturamento definida) + sequência atual
+  const metasStats=(()=>{
+    const withGoal=[...months].sort((a,b)=>a.id.localeCompare(b.id)).map(m=>{
+      const meta=parseBRL((metasByMonth[m.id]||metasByMonth.default||{}).faturamento);
+      if(!meta)return null;
+      return{id:m.id,hit:(m.summary.faturamento||0)>=meta};
+    }).filter(Boolean);
+    if(withGoal.length===0)return null;
+    const hits=withGoal.filter(x=>x.hit).length;
+    let streak=0;
+    for(let i=withGoal.length-1;i>=0;i--){ if(withGoal[i].hit)streak++; else break; }
+    return{total:withGoal.length,hits,pct:(hits/withGoal.length)*100,streak};
+  })();
+
   if(loading)return (
     <div className="dg-page">
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14,marginBottom:16}}>
@@ -1886,12 +1982,26 @@ function MesesFechados({T,reloadKey,currentUser}) {
 
     const prodCurr=prodSummary(s.id);
     const prodPrev=prev?prodSummary(prev.id):null;
+    const gap=prodCurr?prodCurr.vendidoRS-prodCurr.faturamentoRS:null;
+
+    // Ticket médio diário (a partir dos incrementos reais do faturamento acumulado)
+    const deltas=s.entries.map((e,i)=>{
+      if(e.faturamento==null)return null;
+      const p=i>0&&s.entries[i-1].faturamento!=null?s.entries[i-1].faturamento:0;
+      const d=e.faturamento-p; return d>=0?d:null;
+    }).filter(v=>v!=null);
+    const ticketMedio=deltas.length?deltas.reduce((a,b)=>a+b,0)/deltas.length:null;
+
+    // Comparativo Ano vs Ano (mesmo mês, ano anterior)
+    const [yy,mmn]=s.id.split("-").map(Number);
+    const yoyId=`${yy-1}-${String(mmn).padStart(2,"0")}`;
+    const yoy=months.find(m=>m.id===yoyId)||null;
 
     return (
       <>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:8}}>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
-            <button onClick={()=>setSelected(null)} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13}}>← Voltar</button>
+            <button onClick={()=>{setSelected(null);setEditProd(false);}} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13}}>← Voltar</button>
             <div>
               <div style={{fontSize:18,fontWeight:700,color:T.text}}>{s.label}</div>
               <div style={{fontSize:12,color:T.muted}}>Fechado em {toDisplay(s.closedAt)} · {s.entries.length} lançamentos {prev&&<span style={{color:T.faint}}>· vs <strong style={{color:T.sub}}>{prev.label}</strong></span>}</div>
@@ -1916,6 +2026,41 @@ function MesesFechados({T,reloadKey,currentUser}) {
             ))}
           </div>
         </div>
+        <div className="dg-grid dg-grid-2" style={{display:"grid",gap:14,marginBottom:16}}>
+          <div className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:"3px solid #f59e0b"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:16}}>🎯</span>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5}}>Ticket Médio Diário</div>
+            </div>
+            <div style={{fontSize:20,fontWeight:700,color:T.text}}>{ticketMedio!=null?fmtRS(ticketMedio):"—"}</div>
+            <div style={{fontSize:11,color:T.faint,marginTop:2}}>Média do incremento diário de faturamento</div>
+          </div>
+          <div className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:`3px solid ${gap==null?T.border:gap>0?"#f59e0b":"#10b981"}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <span style={{fontSize:16}}>📦</span>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5}}>Gap Vendido vs Faturado</div>
+            </div>
+            <div style={{fontSize:20,fontWeight:700,color:gap==null?T.text:gap>0?"#f59e0b":"#10b981"}}>{gap!=null?fmtRS(Math.abs(gap)):"—"}</div>
+            <div style={{fontSize:11,color:T.faint,marginTop:2}}>{gap==null?"Sem produtos lançados":gap>0?"Pendente de faturamento":gap<0?"Faturado além do vendido no mês (backlog anterior)":"Vendido = Faturado"}</div>
+          </div>
+        </div>
+
+        {yoy&&(
+          <div style={{...cSt,marginBottom:16,borderTop:"3px solid #06b6d4"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+              <span style={{fontSize:16}}>📆</span>
+              <div style={{fontSize:14,fontWeight:600,color:T.text}}>
+                Comparativo Ano vs Ano <span style={{fontSize:12,fontWeight:400,color:T.muted,marginLeft:8}}>{s.label} vs {yoy.label}</span>
+              </div>
+            </div>
+            <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12}}>
+              <DeltaCard label="Faturamento" curr={s.summary.faturamento} prev={yoy.summary.faturamento} color="#3b82f6" T={T}/>
+              <DeltaCard label="Vendas"      curr={s.summary.vendas}      prev={yoy.summary.vendas}      color="#10b981" T={T}/>
+              <DeltaCard label="Atrasos"     curr={s.summary.atrasos}     prev={yoy.summary.atrasos}     color="#ef4444" T={T} inv/>
+            </div>
+          </div>
+        )}
+
         <div style={{...cSt,borderLeft:"4px solid #ef4444",marginBottom:16}}><AtrasoChart entries={s.entries} metaValue={null} T={T}/></div>
         <div style={{...cSt,marginBottom:16}}><DailyChart entries={s.entries} T={T} metaFaturamento={(metasByMonth[s.id]||metasByMonth.default||{}).faturamento} extraHols={holidays}/></div>
         {s.entries.length>1&&<div style={{...cSt,marginBottom:16}}><WeekdayChart entries={s.entries} T={T}/></div>}
@@ -1923,9 +2068,12 @@ function MesesFechados({T,reloadKey,currentUser}) {
         {prodCurr&&(
           <>
             <div style={{...cSt,marginBottom:16,borderTop:"3px solid #10b981"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-                <span style={{fontSize:16}}>📦</span>
-                <div style={{fontSize:14,fontWeight:600,color:T.text}}>Produtos do Mês — Vendido e Faturado</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>📦</span>
+                  <div style={{fontSize:14,fontWeight:600,color:T.text}}>Produtos do Mês — Vendido e Faturado</div>
+                </div>
+                {canManage&&!editProd&&<button onClick={()=>openEditProd(s.id)} style={{display:"flex",alignItems:"center",gap:5,background:"#3b82f620",color:"#3b82f6",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600}}><Edit2 size={12}/> Editar Produtos</button>}
               </div>
               <div className="dg-grid dg-grid-4" style={{display:"grid",gap:12}}>
                 <DeltaCard label="Faturamento R$" curr={prodCurr.faturamentoRS} prev={prodPrev?.faturamentoRS} color="#3b82f6" T={T}/>
@@ -1945,6 +2093,51 @@ function MesesFechados({T,reloadKey,currentUser}) {
               </div>
             )}
           </>
+        )}
+        {!prodCurr&&canManage&&!editProd&&(
+          <div style={{...cSt,marginBottom:16,textAlign:"center",padding:32}}>
+            <div style={{fontSize:13,color:T.faint,marginBottom:10}}>Nenhum produto lançado para {s.label}.</div>
+            <button onClick={()=>openEditProd(s.id)} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14,margin:"0 auto"}}><Plus size={15}/> Lançar Produtos deste Mês</button>
+          </div>
+        )}
+        {editProd&&(
+          <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontSize:14,fontWeight:600,color:T.text}}>✏️ Editando Produtos — {s.label}</div>
+              <button onClick={addEditRow} style={{display:"flex",alignItems:"center",gap:5,background:"#3b82f620",color:"#3b82f6",border:"none",borderRadius:6,padding:"5px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}><Plus size={12}/> Produto</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+              {editRows.map(row=>(
+                <div key={row.id} style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:8,padding:10}}>
+                  <div className="dg-grid dg-grid-6" style={{display:"grid",gap:8,alignItems:"end"}}>
+                    <div>
+                      <label style={{...lSt,fontSize:10}}>Material</label>
+                      <select style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.material} onChange={setEditField(row.id,"material")}>
+                        {MATERIAIS.map(m=><option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{...lSt,fontSize:10}}>Liga</label>
+                      <select style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.liga} onChange={setEditField(row.id,"liga")}>
+                        {LIGAS.map(l=><option key={l} value={l}>{l}</option>)}
+                      </select>
+                    </div>
+                    <div><label style={{...lSt,fontSize:10}}>Vendido R$</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.vendidoRS} onChange={setEditField(row.id,"vendidoRS")} placeholder="0,00"/></div>
+                    <div><label style={{...lSt,fontSize:10}}>Vendido KG</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.vendidoKG} onChange={setEditField(row.id,"vendidoKG")} placeholder="0,00"/></div>
+                    <div><label style={{...lSt,fontSize:10}}>Faturado R$</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.faturadoRS} onChange={setEditField(row.id,"faturadoRS")} placeholder="0,00"/></div>
+                    <div style={{display:"flex",gap:6,alignItems:"end"}}>
+                      <div style={{flex:1}}><label style={{...lSt,fontSize:10}}>Faturado KG</label><input style={{...iSt,padding:"7px 8px",fontSize:12.5}} value={row.faturadoKG} onChange={setEditField(row.id,"faturadoKG")} placeholder="0,00"/></div>
+                      {editRows.length>1&&<button onClick={()=>removeEditRow(row.id)} style={{background:"#ef444420",color:"#ef4444",border:"none",borderRadius:6,padding:"7px 9px",cursor:"pointer",flexShrink:0}}><Trash2 size={12}/></button>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+              <button onClick={()=>setEditProd(false)} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>Cancelar</button>
+              <button onClick={()=>saveEditRows(s.id)} style={{display:"flex",alignItems:"center",gap:6,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:600,fontSize:14}}><Save size={14}/> Salvar Produtos</button>
+            </div>
+          </div>
         )}
 
         <div style={cSt}>
@@ -1984,6 +2177,28 @@ function MesesFechados({T,reloadKey,currentUser}) {
         <div style={{color:T.muted,fontSize:14}}>{months.length} mês(es) arquivado(s)</div>
         {canManage&&<button onClick={()=>setShowPMetas(!showPMetas)} style={{display:"flex",alignItems:"center",gap:6,background:showPMetas?"#f59e0b":"#f59e0b20",color:showPMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Material</button>}
       </div>
+      {metasStats&&(
+        <div style={{...cSt,marginBottom:16,borderTop:"3px solid #10b981"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
+            <span style={{fontSize:16}}>🏁</span>
+            <div style={{fontSize:14,fontWeight:600,color:T.text}}>Taxa de Metas Atingidas <span style={{fontSize:12,fontWeight:400,color:T.muted,marginLeft:8}}>(meses com meta de faturamento definida)</span></div>
+          </div>
+          <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12}}>
+            <div style={{background:T.card2,borderRadius:8,padding:"12px 14px"}}>
+              <div style={{fontSize:10,color:T.faint,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Taxa de Sucesso</div>
+              <div style={{fontSize:20,fontWeight:700,color:metasStats.pct>=70?"#10b981":metasStats.pct>=40?"#f59e0b":"#ef4444"}}>{metasStats.pct.toFixed(0)}%</div>
+            </div>
+            <div style={{background:T.card2,borderRadius:8,padding:"12px 14px"}}>
+              <div style={{fontSize:10,color:T.faint,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Meses no Alvo</div>
+              <div style={{fontSize:20,fontWeight:700,color:T.text}}>{metasStats.hits} <span style={{fontSize:13,color:T.faint,fontWeight:400}}>de {metasStats.total}</span></div>
+            </div>
+            <div style={{background:T.card2,borderRadius:8,padding:"12px 14px"}}>
+              <div style={{fontSize:10,color:T.faint,marginBottom:4,textTransform:"uppercase",letterSpacing:.5}}>Sequência Atual</div>
+              <div style={{fontSize:20,fontWeight:700,color:metasStats.streak>0?"#10b981":T.text}}>{metasStats.streak>0?`🔥 ${metasStats.streak}`:"0"} <span style={{fontSize:13,color:T.faint,fontWeight:400}}>{metasStats.streak===1?"mês":"meses"}</span></div>
+            </div>
+          </div>
+        </div>
+      )}
       {showPMetas&&(
         <div style={{...cSt,borderTop:"3px solid #f59e0b",marginBottom:16}}>
           <div style={{fontSize:15,fontWeight:600,marginBottom:4,color:T.text}}>⚙ Metas por Material (R$)</div>
@@ -1999,12 +2214,20 @@ function MesesFechados({T,reloadKey,currentUser}) {
         </div>
       )}
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:16}}>
-        {[...months].reverse().map(m=>(
+        {[...months].reverse().map(m=>{
+          const metaVal=parseBRL((metasByMonth[m.id]||metasByMonth.default||{}).faturamento);
+          const hit=metaVal?(m.summary.faturamento||0)>=metaVal:null;
+          return(
           <div key={m.id} onClick={()=>setSelected(m)} className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
               <div><div style={{fontSize:20,fontWeight:700,color:T.text}}>{m.label}</div><div style={{fontSize:11,color:T.muted,marginTop:2}}>Fechado em {toDisplay(m.closedAt)} · {m.entries.length} dias</div></div>
               <div style={{background:"#10b98120",borderRadius:8,padding:7}}><Archive size={15} color="#10b981"/></div>
             </div>
+            {hit!=null&&(
+              <div style={{display:"inline-flex",alignItems:"center",gap:5,background:hit?"#10b98120":"#ef444420",color:hit?"#10b981":"#ef4444",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:600,marginBottom:10}}>
+                {hit?"🎯 Meta batida":"📉 Abaixo da meta"}
+              </div>
+            )}
             <div className="dg-grid dg-grid-2" style={{display:"grid",gap:8,marginBottom:14}}>
               {[{label:"Faturamento",val:m.summary.faturamento,color:"#3b82f6"},{label:"Vendas",val:m.summary.vendas,color:"#10b981"},{label:"Atrasos",val:m.summary.atrasos,color:"#ef4444"},{label:"Prev. Próx.",val:m.summary.prevProxMes,color:"#06b6d4"}].map(({label,val,color})=>(
                 <div key={label} style={{background:T.card2,borderRadius:8,padding:"8px 10px"}}>
@@ -2021,7 +2244,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
               <button onClick={e=>{e.stopPropagation();deleteMth(m.id);}} style={{background:"#ef444415",color:"#ef4444",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:12}}><Trash2 size={12}/></button>
             </div>
           </div>
-        ))}
+        );})}
       </div>
     </>
   );
@@ -2229,6 +2452,17 @@ export default function App() {
       {presentMode&&<PresentMode onExit={()=>setPresentMode(false)}/>}
       {pdfContent&&<PDFModal content={pdfContent} title={pdfTitle} onClose={()=>setPdfContent(null)}/>}
       <ToastContainer toasts={toasts}/>
+      {currentUser?.role==="operador"&&!currentUser.onboarded&&(
+        <OnboardingModal T={T} userName={currentUser.nome} onDismiss={async()=>{
+          const updated={...currentUser,onboarded:true};
+          setCurrentUser(updated);
+          try{
+            const r=await window.storage.get("app_users");
+            const list=r?JSON.parse(r.value):[];
+            await window.storage.set("app_users",JSON.stringify(list.map(u=>u.id===updated.id?updated:u)));
+          }catch(_){}
+        }}/>
+      )}
 
       {/* Overlay (mobile only, closes sidebar) */}
       <div className={`dg-overlay${sidebarOpen?" dg-overlay-open":""}`} onClick={()=>setSidebarOpen(false)}/>
