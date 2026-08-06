@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie, ComposedChart, Line } from "recharts";
 import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X, Menu, LogOut, UserPlus, Shield, User, Eye, EyeOff, Lock, Users as UsersIcon } from "lucide-react";
@@ -235,6 +235,16 @@ let _pdfCb=null;
 const exportPDF=(html,title)=>{ if(_pdfCb)_pdfCb(html,title); };
 let _toastCb=null;
 const toast=(msg,type="success")=>{ if(_toastCb)_toastCb(msg,type); };
+// ── Log de auditoria: registra ações sensíveis no Firestore (chave "audit_log", capado em 500 registros) ──
+const logAudit = async (user, action, details="") => {
+  try{
+    let log=[];
+    try{const r=await window.storage.get("audit_log"); if(r) log=JSON.parse(r.value);}catch(_){}
+    log.push({id:"a_"+Date.now()+"_"+Math.random().toString(36).slice(2,6), ts:new Date().toISOString(), userId:user?.id||null, userName:user?.nome||"Sistema", role:user?.role||null, action, details});
+    if(log.length>500) log=log.slice(-500);
+    await window.storage.set("audit_log", JSON.stringify(log));
+  }catch(_){}
+};
 
 const printDashboard = () => {
   const style = document.createElement("style");
@@ -268,7 +278,7 @@ function PDFModal({content,title,onClose}) {
           </div>
         </div>
         <iframe id="pdf-frame" style={{flex:1,border:"none"}}
-          srcDoc={`<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;padding:24px;font-size:13px;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #e2e8f0;padding:8px 10px;text-align:left}th{background:#f1f5f9;font-weight:600;font-size:12px}h2{font-size:18px;margin-bottom:4px}p{color:#64748b;font-size:12px;margin-bottom:12px}tr:nth-child(even){background:#f8fafc}</style></head><body>${content}</body></html>`}
+          srcDoc={`<!DOCTYPE html><html><head><style>body{font-family:Arial,sans-serif;padding:24px;font-size:13px;color:#0f172a}table{width:100%;border-collapse:collapse;margin-top:8px}th,td{border:1px solid #e2e8f0;padding:8px 10px;text-align:left}th{background:#f1f5f9;font-weight:600;font-size:12px}h2{font-size:20px;margin-bottom:2px}p.sub{color:#64748b;font-size:12px;margin-bottom:4px}tr:nth-child(even){background:#f8fafc}.pdf-cover{border-bottom:3px solid #3b82f6;padding-bottom:16px;margin-bottom:20px}.pdf-kpis{display:flex;gap:12px;margin-top:16px;flex-wrap:wrap}.pdf-kpi{flex:1;min-width:120px;border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;background:#f8fafc}.pdf-kpi .lbl{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.4px}.pdf-kpi .val{font-size:19px;font-weight:700;color:#0f172a;margin-top:4px}.pdf-kpi.accent{border-left:4px solid #3b82f6}</style></head><body>${content}</body></html>`}
         />
       </div>
     </div>
@@ -343,17 +353,37 @@ function AuthScreen({dark,setDark,usersExist,onLogin}) {
   const [err,setErr]=useState("");
   const [busy,setBusy]=useState(false);
 
+  const MAX_ATTEMPTS=5, LOCK_MS=5*60*1000;
   const doLogin=async()=>{
     setErr("");
     if(!username||!password){setErr("Preencha usuário e senha.");return;}
     setBusy(true);
+    const uname=username.trim().toLowerCase();
     try{
+      let attempts={};
+      try{const r=await window.storage.get("login_attempts");if(r)attempts=JSON.parse(r.value);}catch(_){}
+      const rec=attempts[uname];
+      if(rec?.lockedUntil&&rec.lockedUntil>Date.now()){
+        const mins=Math.ceil((rec.lockedUntil-Date.now())/60000);
+        setErr(`Muitas tentativas erradas. Tente novamente em ${mins} min.`);
+        setBusy(false);return;
+      }
       let users=[];
       try{const r=await window.storage.get("app_users");if(r)users=JSON.parse(r.value);}catch(_){}
       const hash=await sha256(password);
-      const u=users.find(x=>x.username===username.trim().toLowerCase()&&x.passwordHash===hash);
-      if(!u){setErr("Usuário ou senha inválidos.");setBusy(false);return;}
+      const u=users.find(x=>x.username===uname&&x.passwordHash===hash);
+      if(!u){
+        const count=(rec?.count||0)+1;
+        const locked=count>=MAX_ATTEMPTS;
+        const updated={...attempts,[uname]:{count,lockedUntil:locked?Date.now()+LOCK_MS:null}};
+        try{await window.storage.set("login_attempts",JSON.stringify(updated));}catch(_){}
+        setErr(locked?`Muitas tentativas erradas. Login bloqueado por 5 minutos.`:`Usuário ou senha inválidos. (${count}/${MAX_ATTEMPTS} tentativas antes do bloqueio)`);
+        await logAudit(null,"login_falhou",`Tentativa malsucedida para "${uname}" (${count}/${MAX_ATTEMPTS})`);
+        setBusy(false);return;
+      }
       if(u.active===false){setErr("Este usuário está desativado. Fale com um administrador.");setBusy(false);return;}
+      if(rec){const{[uname]:_,...rest}=attempts;try{await window.storage.set("login_attempts",JSON.stringify(rest));}catch(_){}}
+      await logAudit(u,"login",`Login realizado`);
       onLogin(u);
     }catch(_){setErr("Erro ao autenticar. Tente novamente.");}
     setBusy(false);
@@ -369,6 +399,7 @@ function AuthScreen({dark,setDark,usersExist,onLogin}) {
       const hash=await sha256(password);
       const admin={id:"u_"+Date.now(),nome,username:username.trim().toLowerCase(),passwordHash:hash,role:"admin",active:true,createdAt:today()};
       try{await window.storage.set("app_users",JSON.stringify([admin]));}catch(_){}
+      await logAudit(admin,"criar_admin",`Conta de administrador criada (primeiro acesso)`);
       onLogin(admin);
     }catch(_){setErr("Erro ao criar administrador. Tente novamente.");}
     setBusy(false);
@@ -459,6 +490,7 @@ function UsersPage({T,currentUser,onUserUpdated}) {
     setForm({nome:"",username:"",password:"",role:"operador"});
     setShowForm(false);
     toast(`Usuário "${novo.nome}" criado com sucesso!`);
+    logAudit(currentUser,"criar_usuario",`"${novo.nome}" (@${novo.username}) — ${ROLES[novo.role]}`);
   };
 
   const toggleActive=async(u)=>{
@@ -468,6 +500,7 @@ function UsersPage({T,currentUser,onUserUpdated}) {
     }
     await persist(users.map(x=>x.id===u.id?{...x,active:x.active===false}:x));
     toast(u.active===false?`"${u.nome}" reativado.`:`"${u.nome}" desativado.`,"info");
+    logAudit(currentUser,u.active===false?"reativar_usuario":"desativar_usuario",`"${u.nome}" (@${u.username})`);
   };
 
   const changeRole=async(u,role)=>{
@@ -477,6 +510,7 @@ function UsersPage({T,currentUser,onUserUpdated}) {
     }
     await persist(users.map(x=>x.id===u.id?{...x,role}:x));
     toast(`Nível de "${u.nome}" alterado para ${ROLES[role]}.`,"info");
+    logAudit(currentUser,"alterar_nivel",`"${u.nome}" (@${u.username}) — ${ROLES[u.role]} → ${ROLES[role]}`);
     if(u.id===currentUser.id&&onUserUpdated)onUserUpdated({...u,role});
   };
 
@@ -486,6 +520,7 @@ function UsersPage({T,currentUser,onUserUpdated}) {
     await persist(users.map(x=>x.id===u.id?{...x,passwordHash:hash}:x));
     setResetId(null);setResetPw("");
     toast(`Senha de "${u.nome}" redefinida.`);
+    logAudit(currentUser,"redefinir_senha",`Senha de "${u.nome}" (@${u.username}) redefinida por administrador`);
   };
 
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
@@ -574,11 +609,156 @@ function UsersPage({T,currentUser,onUserUpdated}) {
   );
 }
 
+// ── AuditLogPage: histórico de ações sensíveis (somente Admin) ──
+const ACTION_LABELS = {
+  login:"Login", login_falhou:"Login falhou", logout:"Logout", criar_admin:"Criar administrador",
+  criar_lancamento:"Criar lançamento", editar_lancamento:"Editar lançamento", excluir_lancamento:"Excluir lançamento",
+  fechar_mes:"Fechar mês", salvar_meta:"Salvar meta", adicionar_feriado:"Adicionar feriado", remover_feriado:"Remover feriado",
+  criar_usuario:"Criar usuário", desativar_usuario:"Desativar usuário", reativar_usuario:"Reativar usuário",
+  alterar_nivel:"Alterar nível de acesso", redefinir_senha:"Redefinir senha", editar_produtos_mes:"Editar produtos do mês",
+  excluir_mes_fechado:"Excluir mês fechado",
+};
+const ACTION_COLORS = {
+  login:"#10b981", login_falhou:"#ef4444", logout:"#64748b", criar_admin:"#8b5cf6",
+  criar_lancamento:"#3b82f6", editar_lancamento:"#3b82f6", excluir_lancamento:"#ef4444",
+  fechar_mes:"#10b981", salvar_meta:"#f59e0b", adicionar_feriado:"#8b5cf6", remover_feriado:"#ef4444",
+  criar_usuario:"#3b82f6", desativar_usuario:"#ef4444", reativar_usuario:"#10b981",
+  alterar_nivel:"#f59e0b", redefinir_senha:"#f59e0b", editar_produtos_mes:"#3b82f6", excluir_mes_fechado:"#ef4444",
+};
+function AuditLogPage({T}) {
+  const [log,setLog]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [filterUser,setFilterUser]=useState("");
+  const [filterAction,setFilterAction]=useState("");
+  const [confirmClear,setConfirmClear]=useState(false);
+  useEffect(()=>{
+    (async()=>{
+      try{const r=await window.storage.get("audit_log");if(r)setLog(JSON.parse(r.value));}catch(_){}
+      setLoading(false);
+    })();
+  },[]);
+  const clearLog=async()=>{
+    setLog([]);
+    try{await window.storage.set("audit_log",JSON.stringify([]));}catch(_){}
+    setConfirmClear(false);
+    toast("Log de auditoria limpo.","info");
+  };
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const iSt={background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",color:T.text,fontSize:12.5,outline:"none"};
+  const users=[...new Set(log.map(l=>l.userName))].filter(Boolean).sort();
+  const actions=[...new Set(log.map(l=>l.action))].sort();
+  const filtered=[...log].reverse().filter(l=>(!filterUser||l.userName===filterUser)&&(!filterAction||l.action===filterAction));
+
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
+        {Array.from({length:3}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="dg-page">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div style={{fontSize:13,color:T.muted}}>{log.length} registro(s) no log {log.length>=500&&<span style={{color:"#f59e0b"}}>(limite de 500 — registros mais antigos são descartados)</span>}</div>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <select value={filterUser} onChange={e=>setFilterUser(e.target.value)} style={iSt}>
+            <option value="">Todos os usuários</option>
+            {users.map(u=><option key={u} value={u}>{u}</option>)}
+          </select>
+          <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={iSt}>
+            <option value="">Todas as ações</option>
+            {actions.map(a=><option key={a} value={a}>{ACTION_LABELS[a]||a}</option>)}
+          </select>
+          {confirmClear?(
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              <span style={{fontSize:11,color:T.faint}}>Confirmar?</span>
+              <button onClick={clearLog} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:600}}>Sim</button>
+              <button onClick={()=>setConfirmClear(false)} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:6,padding:"6px 10px",cursor:"pointer",fontSize:12}}>Não</button>
+            </div>
+          ):(
+            <button onClick={()=>setConfirmClear(true)} style={{display:"flex",alignItems:"center",gap:5,background:"#ef444420",color:"#ef4444",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12.5,fontWeight:600}}><Trash2 size={12}/> Limpar Log</button>
+          )}
+        </div>
+      </div>
+
+      {filtered.length===0?(
+        <div style={{...cSt,textAlign:"center",padding:52}}>
+          <div className="dg-empty-icon" style={{width:64,height:64,borderRadius:"50%",background:"#64748b20",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30}}>📋</div>
+          <div style={{color:T.text,fontSize:16,fontWeight:600}}>Nenhum registro encontrado</div>
+        </div>
+      ):(
+        <div style={cSt}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>{["Data/Hora","Usuário","Ação","Detalhes"].map(h=><th key={h} style={{padding:"10px 12px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase",letterSpacing:.5,fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+              <tbody>{filtered.map(l=>{
+                const color=ACTION_COLORS[l.action]||"#64748b";
+                const dt=new Date(l.ts);
+                return (
+                  <tr key={l.id} style={{borderBottom:`1px solid ${T.border}50`}}>
+                    <td style={{padding:"10px 12px",color:T.muted,whiteSpace:"nowrap",fontSize:12}}>{dt.toLocaleDateString("pt-BR")} {dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</td>
+                    <td style={{padding:"10px 12px",color:T.text,fontWeight:600,whiteSpace:"nowrap"}}>{l.userName||"—"}{l.role&&<span style={{fontSize:10,color:T.faint,fontWeight:400,marginLeft:5}}>({ROLES[l.role]||l.role})</span>}</td>
+                    <td style={{padding:"10px 12px",whiteSpace:"nowrap"}}><span style={{background:color+"20",color,borderRadius:6,padding:"3px 9px",fontSize:11.5,fontWeight:600}}>{ACTION_LABELS[l.action]||l.action}</span></td>
+                    <td style={{padding:"10px 12px",color:T.sub,fontSize:12.5}}>{l.details}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Shared UI ────────────────────────────────────────────────
 function StatusBadge({s}) {
   const cfg={Pendente:{color:"#f59e0b",icon:<Clock size={11}/>},Aprovado:{color:"#10b981",icon:<CheckCircle size={11}/>},Recusado:{color:"#ef4444",icon:<XCircle size={11}/>}};
   const{color="#64748b",icon=null}=cfg[s]||{};
   return <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:500,background:color+"20",color}}>{icon}{s}</span>;
+}
+
+// ── AnimatedNumber: conta suavemente de 0 até o valor final ao entrar em tela ──
+function AnimatedNumber({value,format}) {
+  const [display,setDisplay]=useState(0);
+  const prevRef=useRef(0);
+  useEffect(()=>{
+    const target=typeof value==="number"?value:0;
+    const start=prevRef.current;
+    const startTime=performance.now();
+    const DURATION=700;
+    let raf;
+    const tick=(now)=>{
+      const t=Math.min(1,(now-startTime)/DURATION);
+      const eased=1-Math.pow(1-t,3); // ease-out cubic
+      setDisplay(start+(target-start)*eased);
+      if(t<1)raf=requestAnimationFrame(tick);
+      else prevRef.current=target;
+    };
+    raf=requestAnimationFrame(tick);
+    return ()=>cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[value]);
+  if(value==null)return <>—</>;
+  return <>{format?format(display):Math.round(display)}</>;
+}
+
+// ── Sparkline: mini-gráfico de tendência em SVG, sem dependências ──
+function Sparkline({data,color="#3b82f6",width=90,height=28}) {
+  if(!data||data.length<2)return <div style={{width,height}}/>;
+  const min=Math.min(...data), max=Math.max(...data);
+  const range=(max-min)||1;
+  const step=width/(data.length-1);
+  const pts=data.map((v,i)=>`${(i*step).toFixed(1)},${(height-((v-min)/range)*height).toFixed(1)}`);
+  const last=data[data.length-1];
+  const lastY=(height-((last-min)/range)*height).toFixed(1);
+  return (
+    <svg width={width} height={height} style={{overflow:"visible"}}>
+      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" opacity="0.85"/>
+      <circle cx={width} cy={lastY} r="2.5" fill={color}/>
+    </svg>
+  );
 }
 
 function PctBadge({p,inv=false,T}) {
@@ -1197,11 +1377,21 @@ function HomePage({T,onNavigate}) {
   // Lembrete: existe lançamento de um mês anterior ao atual que ainda não foi fechado?
   const monthNotClosed=latest&&activeMonth<today().slice(0,7)?activeMonth:null;
 
+  // Sparklines: para campos acumulados, usamos o incremento diário real (não o valor bruto)
+  const deltaSeries=(field)=>daily.map((e,i)=>{
+    if(e[field]==null)return null;
+    const prev=i>0&&daily[i-1][field]!=null?daily[i-1][field]:0;
+    const d=e[field]-prev; return d>=0?d:null;
+  }).filter(v=>v!=null).slice(-14);
+  const fatSpark=deltaSeries("faturamento");
+  const venSpark=deltaSeries("vendas");
+  const atrSpark=daily.filter(e=>e.atrasos!=null).slice(-14).map(e=>e.atrasos);
+
   const summaryCards=[
-    {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",emoji:"💰",   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
-    {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true},
-    {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",emoji:"🛒",  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true},
-    {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",emoji:"🗂️",        sub:"no histórico",isRS:false},
+    {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",emoji:"💰",   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true,spark:fatSpark},
+    {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true,spark:atrSpark},
+    {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",emoji:"🛒",  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true,spark:venSpark},
+    {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",emoji:"🗂️",        sub:"no histórico",isRS:false,spark:null},
   ].sort((a,b)=>{
     if(!cardOrder)return 0;
     const ia=cardOrder.indexOf(a.label),ib=cardOrder.indexOf(b.label);
@@ -1255,7 +1445,7 @@ function HomePage({T,onNavigate}) {
         <Menu size={12}/> Arraste os cards pelo cabeçalho para reordenar
       </div>
       <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
-        {summaryCards.map(({label,val,color,emoji,sub,isRS})=>(
+        {summaryCards.map(({label,val,color,emoji,sub,isRS,spark})=>(
           <div key={label}
             draggable
             onDragStart={()=>setDragId(label)}
@@ -1269,8 +1459,11 @@ function HomePage({T,onNavigate}) {
               </div>
               <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
-            <div style={{fontSize:22,fontWeight:700,color}}>{val!=null?(isRS?fmtRS(val):fmtN(val)):"—"}</div>
-            <div style={{fontSize:12,color:T.muted,marginTop:4}}>{sub}</div>
+            <div style={{fontSize:22,fontWeight:700,color}}>{val!=null?<AnimatedNumber value={val} format={isRS?fmtRS:fmtN}/>:"—"}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:4,gap:8}}>
+              <div style={{fontSize:12,color:T.muted}}>{sub}</div>
+              {spark&&spark.length>=2&&<Sparkline data={spark} color={color}/>}
+            </div>
           </div>
         ))}
       </div>
@@ -1453,6 +1646,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
     setMetasByMonth(updated);
     try{await window.storage.set("diario_metas_by_month",JSON.stringify(updated));}catch(_){}
     toast(asDefault?"Meta padrão salva com sucesso!":`Meta de ${monthLabel(metaMonth+"-01")} salva com sucesso!`);
+    logAudit(currentUser,"salvar_meta",asDefault?"Meta padrão atualizada":`Meta de ${monthLabel(metaMonth+"-01")} atualizada`);
   };
 
   const persistHolidays=async(d)=>{try{await window.storage.set("custom_holidays",JSON.stringify(d));}catch(_){}};
@@ -1462,11 +1656,13 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
     setHolidays(updated);await persistHolidays(updated);
     setHolForm({date:"",desc:""});
     toast("Feriado adicionado!");
+    logAudit(currentUser,"adicionar_feriado",`${toDisplay(holForm.date)} — ${holForm.desc||"Feriado customizado"}`);
   };
   const removeHoliday=async(date)=>{
     const updated=holidays.filter(h=>h.date!==date);
     setHolidays(updated);await persistHolidays(updated);
     toast("Feriado removido.","info");
+    logAudit(currentUser,"remover_feriado",toDisplay(date));
   };
 
   const saveEntry=async()=>{
@@ -1477,9 +1673,10 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
     setEntries(updated);await persist(updated);
     setForm(initForm);setShowForm(false);setEditId(null);
     toast(editId?"Lançamento atualizado!":"Lançamento salvo com sucesso!");
+    logAudit(currentUser,editId?"editar_lancamento":"criar_lancamento",`${toDisplay(entry.date)} — Faturamento: ${fmtRS(entry.faturamento)}`);
   };
 
-  const deleteEntry=async(id)=>{const u=entries.filter(e=>e.id!==id);setEntries(u);await persist(u);toast("Lançamento excluído.","info");};
+  const deleteEntry=async(id)=>{const e=entries.find(x=>x.id===id);const u=entries.filter(x=>x.id!==id);setEntries(u);await persist(u);toast("Lançamento excluído.","info");logAudit(currentUser,"excluir_lancamento",e?toDisplay(e.date):id);};
   const startEdit=(e)=>{setForm({date:e.date,faturamento:e.faturamento??"",atrasos:e.atrasos??"",vendas:e.vendas??"",prevMes:e.prevMes??"",prevProxMes:e.prevProxMes??"",obs:e.obs||""});setEditId(e.id);setShowForm(true);setShowHist(false);setShowMetas(false);setShowFechar(false);setShowFeriados(false);};
   const closeAll=(which)=>{setShowForm(which==="form");setShowMetas(which==="metas");setShowHist(which==="hist");setShowFechar(which==="fechar");setShowFeriados(which==="feriados");if(which!=="form")setEditId(null);};
 
@@ -1520,11 +1717,23 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
     setShowFechar(false);
     if(onMonthClosed)onMonthClosed();
     toast(`Mês de ${monthLabel(entries[0].date)} fechado com sucesso!`);
+    logAudit(currentUser,"fechar_mes",`${monthLabel(entries[0].date)} — ${entries.length} lançamentos, ${validRows.length} produtos`);
   };
 
   const doCSV=()=>exportCSV(entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento R$","Atrasos R$","Vendas R$","Prev.Mês R$","Prev.Próx.Mês R$","Obs"],"fechamento_diario.csv");
   const doXLSX=()=>exportXLSX(entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento R$","Atrasos R$","Vendas R$","Prev.Mês R$","Prev.Próx.Mês R$","Obs"],"fechamento_diario.xlsx","Fechamento Diário");
-  const doPDF=()=>exportPDF(`<h2>Fechamento Diário</h2><p>Gerado em ${new Date().toLocaleDateString("pt-BR")}</p><table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Observações</th></tr></thead><tbody>${entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,"Fechamento Diário");
+  const doPDF=()=>exportPDF(`
+    <div class="pdf-cover">
+      <h2>Fechamento Diário</h2>
+      <p class="sub">Gerado em ${new Date().toLocaleDateString("pt-BR")} · ${entries.length} lançamento(s) · Último: ${hasData?toDisplay(latest.date):"—"}</p>
+      <div class="pdf-kpis">
+        <div class="pdf-kpi accent"><div class="lbl">Faturamento Acumulado</div><div class="val">${fmtRS(latest?.faturamento)}</div></div>
+        <div class="pdf-kpi"><div class="lbl">Atrasos</div><div class="val">${fmtRS(latest?.atrasos)}</div></div>
+        <div class="pdf-kpi"><div class="lbl">Vendas Acumuladas</div><div class="val">${fmtRS(latest?.vendas)}</div></div>
+        <div class="pdf-kpi"><div class="lbl">Ticket Médio Diário</div><div class="val">${ticketMedio!=null?fmtRS(ticketMedio):"—"}</div></div>
+      </div>
+    </div>
+    <table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Observações</th></tr></thead><tbody>${entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,"Fechamento Diário");
 
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const iSt={background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",color:T.text,fontSize:14,width:"100%",boxSizing:"border-box",outline:"none"};
@@ -1810,7 +2019,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
               <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
-            <div style={{fontSize:20,fontWeight:700,color:T.text,wordBreak:"break-word"}}>{val!=null?fmtRS(val):"—"}</div>
+            <div style={{fontSize:20,fontWeight:700,color:T.text,wordBreak:"break-word"}}>{val!=null?<AnimatedNumber value={val} format={fmtRS}/>:"—"}</div>
             <div style={{fontSize:11,color:T.muted,marginTop:2}}>{hasData?`Até ${toDisplay(latest.date)}`:"Sem dados"}</div>
             {prorated&&wdInfo&&metaDiaria(metaRaw)!=null&&(
               <div style={{fontSize:10.5,color:T.faint,marginTop:3}}>Meta do dia: {fmtRS(metaDiaria(metaRaw))} · {wdInfo.passed}/{wdInfo.total}d úteis</div>
@@ -1969,7 +2178,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
       setLoading(false);
     })();
   },[reloadKey]);
-  const deleteMth=async(id)=>{const u=months.filter(m=>m.id!==id);setMonths(u);try{await window.storage.set("closed_months",JSON.stringify(u));}catch(_){}if(selected?.id===id)setSelected(null);};
+  const deleteMth=async(id)=>{const m=months.find(x=>x.id===id);const u=months.filter(m=>m.id!==id);setMonths(u);try{await window.storage.set("closed_months",JSON.stringify(u));}catch(_){}if(selected?.id===id)setSelected(null);logAudit(currentUser,"excluir_mes_fechado",m?m.label:id);};
   const setPMeta=(m)=>(e)=>setProdMetasF(p=>({...p,[m]:e.target.value}));
   const saveProdMetas=async()=>{
     setProdMetas(prodMetasF);
@@ -2009,6 +2218,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
     try{await window.storage.set("diario_produtos_mensais",JSON.stringify(updated));}catch(_){}
     setEditProd(false);
     toast(`Produtos de ${monthLabel(monthKey+"-01")} atualizados!`);
+    logAudit(currentUser,"editar_produtos_mes",`${monthLabel(monthKey+"-01")} — ${validRows.length} linha(s)`);
   };
 
   // Taxa de metas atingidas (só considera meses com meta de faturamento definida) + sequência atual
@@ -2046,7 +2256,19 @@ function MesesFechados({T,reloadKey,currentUser}) {
     ];
     const doCSV=()=>exportCSV(s.entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento","Atrasos","Vendas","Prev.Mês","Prev.Próx.Mês","Obs"],`fechamento_${s.label}.csv`);
     const doXLSX=()=>exportXLSX(s.entries.map(e=>[toDisplay(e.date),e.faturamento??'',e.atrasos??'',e.vendas??'',e.prevMes??'',e.prevProxMes??'',e.obs||'']),["Data","Faturamento","Atrasos","Vendas","Prev.Mês","Prev.Próx.Mês","Obs"],`fechamento_${s.label}.xlsx`,s.label);
-    const doPDF=()=>exportPDF(`<h2>Fechamento — ${s.label}</h2><p>Gerado em ${new Date().toLocaleDateString("pt-BR")}</p><table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Obs</th></tr></thead><tbody>${s.entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,`Fechamento ${s.label}`);
+    const doPDF=()=>exportPDF(`
+      <div class="pdf-cover">
+        <h2>Fechamento — ${s.label}</h2>
+        <p class="sub">Gerado em ${new Date().toLocaleDateString("pt-BR")} · Fechado em ${toDisplay(s.closedAt)} · ${s.entries.length} lançamentos</p>
+        <div class="pdf-kpis">
+          <div class="pdf-kpi accent"><div class="lbl">Faturamento Final</div><div class="val">${fmtRS(s.summary.faturamento)}</div></div>
+          <div class="pdf-kpi"><div class="lbl">Atrasos Finais</div><div class="val">${fmtRS(s.summary.atrasos)}</div></div>
+          <div class="pdf-kpi"><div class="lbl">Vendas Finais</div><div class="val">${fmtRS(s.summary.vendas)}</div></div>
+          <div class="pdf-kpi"><div class="lbl">Ticket Médio Diário</div><div class="val">${ticketMedio!=null?fmtRS(ticketMedio):"—"}</div></div>
+          ${gap!=null?`<div class="pdf-kpi"><div class="lbl">Gap Vendido vs Faturado</div><div class="val">${fmtRS(Math.abs(gap))}</div></div>`:""}
+        </div>
+      </div>
+      <table><thead><tr><th>Data</th><th>Faturamento</th><th>Atrasos</th><th>Vendas</th><th>Prev. Mês</th><th>Prev. Próx. Mês</th><th>Obs</th></tr></thead><tbody>${s.entries.map(e=>`<tr><td>${toDisplay(e.date)}</td><td>${fmtRS(e.faturamento)}</td><td>${fmtRS(e.atrasos)}</td><td>${fmtRS(e.vendas)}</td><td>${fmtRS(e.prevMes)}</td><td>${fmtRS(e.prevProxMes)}</td><td>${e.obs||''}</td></tr>`).join('')}</tbody></table>`,`Fechamento ${s.label}`);
 
     const prodCurr=prodSummary(s.id);
     const prodPrev=prev?prodSummary(prev.id):null;
@@ -2492,7 +2714,7 @@ export default function App() {
     })();
   },[]);
 
-  const logout=()=>{setCurrentUser(null);setPage("home");setSidebarOpen(false);toast("Sessão encerrada.","info");};
+  const logout=()=>{logAudit(currentUser,"logout",`Logout realizado`);setCurrentUser(null);setPage("home");setSidebarOpen(false);toast("Sessão encerrada.","info");};
 
   const goTo=(id)=>{setPage(id);setSidebarOpen(false);};
 
@@ -2503,9 +2725,9 @@ export default function App() {
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
-    ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon}]}]:[]),
+    ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon},{id:"auditoria",label:"Log de Auditoria",icon:Shield}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -2617,6 +2839,7 @@ export default function App() {
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey} currentUser={currentUser}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
+          {page==="auditoria"&&isAdmin(currentUser)&&<AuditLogPage T={T}/>}
         </div>
       </div>
     </div>
