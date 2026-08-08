@@ -761,6 +761,109 @@ function Sparkline({data,color="#3b82f6",width=90,height=28}) {
   );
 }
 
+// ── HeatmapCalendar: mapa de calor do faturamento diário (incremento real) ──
+function HeatmapCalendar({entries,T}) {
+  if(!entries||entries.length===0)return null;
+  const refDate=new Date(entries[0].date+"T12:00:00");
+  const year=refDate.getFullYear(), month=refDate.getMonth();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const firstDow=new Date(year,month,1).getDay(); // 0=Dom
+
+  // incremento diário real (o campo faturamento é acumulado)
+  const byDate={};
+  entries.forEach((e,i)=>{
+    if(e.faturamento==null)return;
+    const prev=i>0&&entries[i-1].faturamento!=null?entries[i-1].faturamento:0;
+    const d=e.faturamento-prev;
+    if(d>=0)byDate[e.date]=d;
+  });
+  const values=Object.values(byDate);
+  const max=values.length?Math.max(...values):0;
+  const bucketOf=(v)=>{
+    if(v==null)return 0;
+    if(max<=0)return 0;
+    const r=v/max;
+    if(r===0)return 1;
+    if(r<0.25)return 1;
+    if(r<0.5)return 2;
+    if(r<0.75)return 3;
+    return 4;
+  };
+  const BUCKET_COLORS=T.card==="#ffffff"
+    ? ["#f1f5f9","#dbeafe","#93c5fd","#3b82f6","#1d4ed8"]
+    : ["#1e293b","#1e3a5f","#1e5a8f","#2563eb","#3b82f6"];
+  const dowLabels=["D","S","T","Q","Q","S","S"];
+  const cells=[];
+  for(let i=0;i<firstDow;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++){
+    const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    cells.push({day:d,date:dateStr,val:byDate[dateStr]??null});
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:14,fontWeight:600,color:T.text}}>Mapa de Calor — {monthLabel(entries[0].date)}</div>
+        <div style={{display:"flex",alignItems:"center",gap:4,fontSize:10.5,color:T.faint}}>
+          Menos
+          {BUCKET_COLORS.map((c,i)=><div key={i} style={{width:11,height:11,borderRadius:3,background:c}}/>)}
+          Mais
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5,marginBottom:6}}>
+        {dowLabels.map((l,i)=><div key={i} style={{textAlign:"center",fontSize:10,color:T.faint,fontWeight:600}}>{l}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:5}}>
+        {cells.map((c,i)=>{
+          if(!c)return <div key={i}/>;
+          const bucket=bucketOf(c.val);
+          return (
+            <div key={i} title={c.val!=null?`${toDisplay(c.date)}: ${fmtRS(c.val)}`:toDisplay(c.date)}
+              style={{aspectRatio:"1",borderRadius:6,background:BUCKET_COLORS[bucket],display:"flex",alignItems:"center",justifyContent:"center",fontSize:10.5,fontWeight:600,
+                color:bucket>=3?"#fff":T.faint,cursor:c.val!=null?"pointer":"default",transition:"transform .12s"}}
+              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.12)"}
+              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+              {c.day}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── TopMonthsRanking: melhores meses de todos os tempos por faturamento ──
+function TopMonthsRanking({months,T,limit=5}) {
+  if(!months||months.length===0)return null;
+  const top=[...months].sort((a,b)=>(b.summary.faturamento||0)-(a.summary.faturamento||0)).slice(0,limit);
+  const medals=["🥇","🥈","🥉"];
+  const maxVal=top[0]?.summary.faturamento||1;
+  return (
+    <div>
+      <div style={{fontSize:14,fontWeight:600,marginBottom:14,color:T.text}}>🏆 Ranking Histórico — Melhores Meses</div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {top.map((m,i)=>{
+          const pct=maxVal>0?((m.summary.faturamento||0)/maxVal)*100:0;
+          return (
+            <div key={m.id} style={{display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:28,fontSize:i<3?18:13,fontWeight:700,color:T.faint,textAlign:"center",flexShrink:0}}>{medals[i]||`${i+1}º`}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,marginBottom:4}}>
+                  <span style={{fontWeight:600,color:T.text}}>{m.label}</span>
+                  <span style={{color:"#3b82f6",fontWeight:700}}>{fmtRS(m.summary.faturamento)}</span>
+                </div>
+                <div style={{height:6,background:T.card2,borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,background:i===0?"#f59e0b":"#3b82f6",borderRadius:3,transition:"width .5s ease"}}/>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PctBadge({p,inv=false,T}) {
   if(p==null)return <div style={{fontSize:11,color:T.faint,marginTop:6}}>Meta não definida</div>;
   const c=pctColor(p,inv);
@@ -2068,6 +2171,11 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
           <WeekdayChart entries={entries} T={T}/>
         </div>
       )}
+      {entries.length>2&&(
+        <div style={{...cSt,marginBottom:16}}>
+          <HeatmapCalendar entries={entries} T={T}/>
+        </div>
+      )}
       {entries.length>0&&(
         <div style={{...cSt,borderLeft:"4px solid #ef4444",marginBottom:16}}>
           <AtrasoChart entries={entries} metaValue={metaAtr} T={T}/>
@@ -2354,6 +2462,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
         <div style={{...cSt,borderLeft:"4px solid #ef4444",marginBottom:16}}><AtrasoChart entries={s.entries} metaValue={null} T={T}/></div>
         <div style={{...cSt,marginBottom:16}}><DailyChart entries={s.entries} T={T} metaFaturamento={(metasByMonth[s.id]||metasByMonth.default||{}).faturamento} extraHols={holidays}/></div>
         {s.entries.length>1&&<div style={{...cSt,marginBottom:16}}><WeekdayChart entries={s.entries} T={T}/></div>}
+        {s.entries.length>2&&<div style={{...cSt,marginBottom:16}}><HeatmapCalendar entries={s.entries} T={T}/></div>}
 
         {prodCurr&&(
           <>
@@ -2487,6 +2596,12 @@ function MesesFechados({T,reloadKey,currentUser}) {
               <div style={{fontSize:20,fontWeight:700,color:metasStats.streak>0?"#10b981":T.text}}>{metasStats.streak>0?`🔥 ${metasStats.streak}`:"0"} <span style={{fontSize:13,color:T.faint,fontWeight:400}}>{metasStats.streak===1?"mês":"meses"}</span></div>
             </div>
           </div>
+        </div>
+      )}
+
+      {months.length>=2&&(
+        <div style={{...cSt,marginBottom:16}}>
+          <TopMonthsRanking months={months} T={T}/>
         </div>
       )}
       {showPMetas&&(
