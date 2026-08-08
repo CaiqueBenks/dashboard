@@ -184,6 +184,15 @@ const fmtRS  = (n) => n!=null ? new Intl.NumberFormat("pt-BR",{style:"currency",
 const fmtN   = (n) => n!=null ? new Intl.NumberFormat("pt-BR").format(n) : "—";
 const today  = () => new Date().toISOString().split("T")[0];
 const toDisplay  = (iso) => { if(!iso)return""; const[y,m,d]=iso.split("-"); return`${d}/${m}/${y}`; };
+const parseDisplayDate = (v) => {
+  if(!v)return null;
+  const s=String(v).trim();
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); // dd/mm/yyyy
+  if(m)return`${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); // yyyy-mm-dd (já no formato certo)
+  if(m)return`${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  return null;
+};
 const monthLabel = (iso) => { if(!iso)return""; const[y,m]=iso.split("-"); const ns=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]; return`${ns[+m-1]}/${y}`; };
 const parseBRL   = (v) => { if(!v&&v!==0)return null; const s=String(v).replace(/[R$\s.]/g,"").replace(",","."); const n=parseFloat(s); return isNaN(n)?null:n; };
 const rawPct     = (val,meta) => { const v=parseBRL(val??""),m=parseBRL(meta??""); if(!v||!m||m===0)return null; return(v/m)*100; };
@@ -334,6 +343,69 @@ function OnboardingModal({T,userName,onDismiss}) {
           ))}
         </div>
         <button onClick={onDismiss} style={{width:"100%",background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:14}}>Entendi, vamos começar!</button>
+      </div>
+    </div>
+  );
+}
+
+// ── CommandPalette: busca rápida (Ctrl/Cmd+K) ───────────────────
+function CommandPalette({T,onClose,onNavigate,onNewEntry,onToggleTheme,dark,currentUser}) {
+  const [query,setQuery]=useState("");
+  const [selIdx,setSelIdx]=useState(0);
+  const inputRef=useRef(null);
+
+  const commands=useMemo(()=>{
+    const base=[
+      {id:"home",     label:"Ir para Início",           hint:"Página",  emoji:"🏠", action:()=>onNavigate("home")},
+      {id:"diario",   label:"Ir para Fechamento Diário", hint:"Página",  emoji:"📊", action:()=>onNavigate("diario")},
+      {id:"fechados", label:"Ir para Meses Fechados",    hint:"Página",  emoji:"🗂️", action:()=>onNavigate("fechados")},
+      {id:"biblioteca",label:"Ir para Biblioteca",       hint:"Página",  emoji:"📚", action:()=>onNavigate("biblioteca")},
+      {id:"novo",     label:"Novo Lançamento",           hint:"Atalho: N", emoji:"➕", action:()=>onNewEntry()},
+      {id:"tema",     label:dark?"Mudar para Tema Claro":"Mudar para Tema Escuro", hint:"Aparência", emoji:dark?"☀️":"🌙", action:()=>onToggleTheme()},
+    ];
+    if(isAdmin(currentUser)){
+      base.push({id:"usuarios",  label:"Ir para Usuários",         hint:"Administração", emoji:"👥", action:()=>onNavigate("usuarios")});
+      base.push({id:"auditoria", label:"Ir para Log de Auditoria", hint:"Administração", emoji:"📋", action:()=>onNavigate("auditoria")});
+    }
+    return base;
+  },[dark,currentUser]);
+
+  const filtered=commands.filter(c=>c.label.toLowerCase().includes(query.toLowerCase()));
+
+  useEffect(()=>{ inputRef.current?.focus(); },[]);
+  useEffect(()=>{ setSelIdx(0); },[query]);
+  useEffect(()=>{
+    const fn=(e)=>{
+      if(e.key==="Escape"){e.preventDefault();onClose();}
+      else if(e.key==="ArrowDown"){e.preventDefault();setSelIdx(i=>Math.min(i+1,filtered.length-1));}
+      else if(e.key==="ArrowUp"){e.preventDefault();setSelIdx(i=>Math.max(i-1,0));}
+      else if(e.key==="Enter"){e.preventDefault();const c=filtered[selIdx];if(c){c.action();onClose();}}
+    };
+    window.addEventListener("keydown",fn);
+    return()=>window.removeEventListener("keydown",fn);
+  },[filtered,selIdx,onClose]);
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:99999,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"12vh"}}>
+      <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,boxShadow:"0 24px 60px rgba(0,0,0,.4)",overflow:"hidden"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:`1px solid ${T.border}`}}>
+          <span style={{fontSize:16,color:T.faint}}>🔍</span>
+          <input ref={inputRef} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Digite para buscar ou navegar…"
+            style={{flex:1,background:"transparent",border:"none",outline:"none",color:T.text,fontSize:15}}/>
+          <span style={{fontSize:10.5,color:T.faint,border:`1px solid ${T.border}`,borderRadius:5,padding:"2px 6px"}}>ESC</span>
+        </div>
+        <div style={{maxHeight:340,overflowY:"auto",padding:6}}>
+          {filtered.length===0?(
+            <div style={{padding:"24px 16px",textAlign:"center",color:T.faint,fontSize:13}}>Nada encontrado para "{query}"</div>
+          ):filtered.map((c,i)=>(
+            <div key={c.id} onClick={()=>{c.action();onClose();}} onMouseEnter={()=>setSelIdx(i)}
+              style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:8,cursor:"pointer",background:i===selIdx?(T.card2):"transparent"}}>
+              <span style={{fontSize:17,flexShrink:0}}>{c.emoji}</span>
+              <span style={{flex:1,fontSize:13.5,color:T.text,fontWeight:i===selIdx?600:400}}>{c.label}</span>
+              <span style={{fontSize:10.5,color:T.faint}}>{c.hint}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -863,6 +935,122 @@ function TopMonthsRanking({months,T,limit=5}) {
     </div>
   );
 }
+
+// ── ImportCSVModal: importação de lançamentos em lote via CSV ──
+function ImportCSVModal({T,existingEntries,onClose,onImport}) {
+  const [raw,setRaw]=useState("");
+  const [rows,setRows]=useState(null); // parsed preview
+  const [step,setStep]=useState("input"); // input | preview
+
+  const template=()=>exportCSV(
+    [["08/07/2026","1500000","12000","890000","3200000","3400000","Exemplo — apague esta linha"]],
+    ["Data","Faturamento","Atrasos","Vendas","Prev.Mês","Prev.Próx.Mês","Obs"],
+    "modelo_importacao.csv"
+  );
+
+  const handleFile=(file)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>setRaw(String(e.target.result||""));
+    reader.readAsText(file,"utf-8");
+  };
+
+  const parse=()=>{
+    const lines=raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+    if(lines.length===0){toast("Nenhum conteúdo para importar.","error");return;}
+    const delim=(lines[0].match(/;/g)||[]).length>=(lines[0].match(/,/g)||[]).length?";":",";
+    const dataLines=/data/i.test(lines[0])?lines.slice(1):lines; // pula cabeçalho se detectado
+    const parsed=dataLines.map((line,i)=>{
+      const cols=line.split(delim).map(c=>c.trim().replace(/^"|"$/g,""));
+      const date=parseDisplayDate(cols[0]);
+      const fat=parseBRL(cols[1]); const atr=parseBRL(cols[2]); const ven=parseBRL(cols[3]);
+      const pm=parseBRL(cols[4]); const ppx=parseBRL(cols[5]); const obs=cols[6]||"";
+      const issues=[];
+      if(!date)issues.push("Data inválida");
+      if(cols[1]&&fat==null)issues.push("Faturamento inválido");
+      const exists=existingEntries.some(e=>e.date===date);
+      return{line:i+1,date,faturamento:fat,atrasos:atr,vendas:ven,prevMes:pm,prevProxMes:ppx,obs,issues,exists};
+    });
+    setRows(parsed);
+    setStep("preview");
+  };
+
+  const validRows=rows?rows.filter(r=>r.issues.length===0):[];
+  const confirmImport=()=>{
+    onImport(validRows);
+    onClose();
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div className="dg-page" style={{width:"100%",maxWidth:680,maxHeight:"85vh",overflowY:"auto",background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:28,boxShadow:"0 20px 50px rgba(0,0,0,.35)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <div style={{fontSize:17,fontWeight:700,color:T.text}}>📥 Importar Lançamentos via CSV</div>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer"}}><X size={20}/></button>
+        </div>
+
+        {step==="input"&&(
+          <>
+            <div style={{fontSize:12.5,color:T.muted,marginBottom:16,lineHeight:1.5}}>
+              Envie um arquivo <code>.csv</code> ou cole o conteúdo abaixo. Colunas esperadas, nessa ordem: <strong style={{color:T.text}}>Data (dd/mm/aaaa), Faturamento, Atrasos, Vendas, Prev.Mês, Prev.Próx.Mês, Obs</strong>. Lançamentos com data já existente serão <strong style={{color:T.text}}>atualizados</strong>; os demais serão criados.
+            </div>
+            <button onClick={template} style={{display:"flex",alignItems:"center",gap:6,background:"transparent",color:"#3b82f6",border:"1px solid #3b82f6",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12.5,fontWeight:600,marginBottom:16}}>
+              <Download size={13}/> Baixar modelo CSV
+            </button>
+            <div style={{marginBottom:14}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center",border:`2px dashed ${T.border}`,borderRadius:10,padding:"20px",cursor:"pointer",color:T.muted,fontSize:13}}>
+                <Download size={16}/> Escolher arquivo .csv
+                <input type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={e=>e.target.files[0]&&handleFile(e.target.files[0])}/>
+              </label>
+            </div>
+            <div style={{fontSize:11,color:T.faint,textAlign:"center",marginBottom:14}}>— ou cole o conteúdo aqui —</div>
+            <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8} placeholder="Data;Faturamento;Atrasos;Vendas;Prev.Mês;Prev.Próx.Mês;Obs&#10;01/07/2026;150000;5000;90000;3200000;3400000;"
+              style={{width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:10,color:T.text,fontSize:12,fontFamily:"monospace",boxSizing:"border-box",resize:"vertical"}}/>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:16}}>
+              <button onClick={onClose} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>Cancelar</button>
+              <button onClick={parse} disabled={!raw.trim()} style={{display:"flex",alignItems:"center",gap:6,background:raw.trim()?"#3b82f6":T.card2,color:raw.trim()?"#fff":T.faint,border:"none",borderRadius:8,padding:"9px 18px",cursor:raw.trim()?"pointer":"default",fontWeight:600,fontSize:14}}>Analisar</button>
+            </div>
+          </>
+        )}
+
+        {step==="preview"&&rows&&(
+          <>
+            <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={{background:"#10b98120",color:"#10b981",borderRadius:8,padding:"6px 12px",fontSize:12.5,fontWeight:600}}>✓ {validRows.length} válido(s)</div>
+              {rows.length-validRows.length>0&&<div style={{background:"#ef444420",color:"#ef4444",borderRadius:8,padding:"6px 12px",fontSize:12.5,fontWeight:600}}>✕ {rows.length-validRows.length} com erro</div>}
+              <div style={{background:"#f59e0b20",color:"#f59e0b",borderRadius:8,padding:"6px 12px",fontSize:12.5,fontWeight:600}}>↻ {validRows.filter(r=>r.exists).length} serão atualizados</div>
+            </div>
+            <div style={{overflowX:"auto",maxHeight:280,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:8}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead><tr style={{borderBottom:`1px solid ${T.border}`,position:"sticky",top:0,background:T.card}}>
+                  {["Linha","Data","Faturamento","Atrasos","Vendas","Status"].map(h=><th key={h} style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:10.5,textTransform:"uppercase"}}>{h}</th>)}
+                </tr></thead>
+                <tbody>{rows.map(r=>(
+                  <tr key={r.line} style={{borderBottom:`1px solid ${T.border}50`,opacity:r.issues.length?0.6:1}}>
+                    <td style={{padding:"7px 10px",color:T.faint}}>{r.line}</td>
+                    <td style={{padding:"7px 10px",color:T.text}}>{r.date?toDisplay(r.date):"—"}</td>
+                    <td style={{padding:"7px 10px",color:T.sub}}>{fmtRS(r.faturamento)}</td>
+                    <td style={{padding:"7px 10px",color:T.sub}}>{fmtRS(r.atrasos)}</td>
+                    <td style={{padding:"7px 10px",color:T.sub}}>{fmtRS(r.vendas)}</td>
+                    <td style={{padding:"7px 10px"}}>
+                      {r.issues.length?<span style={{color:"#ef4444",fontSize:11}}>{r.issues.join(", ")}</span>:r.exists?<span style={{color:"#f59e0b",fontSize:11}}>Atualiza</span>:<span style={{color:"#10b981",fontSize:11}}>Novo</span>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",gap:8,marginTop:16}}>
+              <button onClick={()=>{setStep("input");setRows(null);}} style={{background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 16px",cursor:"pointer",fontSize:14}}>← Voltar</button>
+              <button onClick={confirmImport} disabled={validRows.length===0} style={{display:"flex",alignItems:"center",gap:6,background:validRows.length?"#10b981":T.card2,color:validRows.length?"#fff":T.faint,border:"none",borderRadius:8,padding:"9px 18px",cursor:validRows.length?"pointer":"default",fontWeight:700,fontSize:14}}>
+                <Save size={14}/> Importar {validRows.length} lançamento(s)
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 function PctBadge({p,inv=false,T}) {
   if(p==null)return <div style={{fontSize:11,color:T.faint,marginTop:6}}>Meta não definida</div>;
@@ -1661,7 +1849,7 @@ function HomePage({T,onNavigate}) {
 }
 
 // ── FechamentoDiario ─────────────────────────────────────────
-function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
+function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser,newEntrySignal}) {
   const canManage=isAdmin(currentUser);
   const initForm={...EMPTY_FORM,date:today()};
   const [entries,    setEntries]    =useState([]);
@@ -1677,6 +1865,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   const [metasForm,     setMetasForm]     =useState(EMPTY_METAS);
   const [showFechar, setShowFechar] =useState(false);
   const [clearAfter, setClearAfter] =useState(true);
+  const [showImport, setShowImport] =useState(false);
   // ── Feriados customizados ──
   const [holidays,     setHolidays]     =useState([]); // [{date,desc}]
   const [showFeriados, setShowFeriados] =useState(false);
@@ -1780,8 +1969,28 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
   };
 
   const deleteEntry=async(id)=>{const e=entries.find(x=>x.id===id);const u=entries.filter(x=>x.id!==id);setEntries(u);await persist(u);toast("Lançamento excluído.","info");logAudit(currentUser,"excluir_lancamento",e?toDisplay(e.date):id);};
+
+  const importEntries=async(validRows)=>{
+    let updated=[...entries];
+    let novos=0,atualizados=0;
+    validRows.forEach(r=>{
+      const entry={id:r.date,date:r.date,faturamento:r.faturamento,atrasos:r.atrasos,vendas:r.vendas,prevMes:r.prevMes,prevProxMes:r.prevProxMes,obs:r.obs||""};
+      const idx=updated.findIndex(e=>e.date===r.date);
+      if(idx>=0){updated[idx]=entry;atualizados++;}else{updated.push(entry);novos++;}
+    });
+    updated=updated.sort((a,b)=>a.date.localeCompare(b.date));
+    setEntries(updated);await persist(updated);
+    toast(`Importação concluída: ${novos} novo(s), ${atualizados} atualizado(s).`);
+    logAudit(currentUser,"importar_csv",`${novos} criados, ${atualizados} atualizados`);
+  };
   const startEdit=(e)=>{setForm({date:e.date,faturamento:e.faturamento??"",atrasos:e.atrasos??"",vendas:e.vendas??"",prevMes:e.prevMes??"",prevProxMes:e.prevProxMes??"",obs:e.obs||""});setEditId(e.id);setShowForm(true);setShowHist(false);setShowMetas(false);setShowFechar(false);setShowFeriados(false);};
   const closeAll=(which)=>{setShowForm(which==="form");setShowMetas(which==="metas");setShowHist(which==="hist");setShowFechar(which==="fechar");setShowFeriados(which==="feriados");if(which!=="form")setEditId(null);};
+
+  // Atalho de teclado "N" / comando "Novo Lançamento": abre o formulário automaticamente
+  useEffect(()=>{
+    if(newEntrySignal>0){setForm(initForm);setEditId(null);closeAll("form");}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[newEntrySignal]);
 
   const loadProdutosMes=async(monthKey)=>{
     setProdLoading(true);
@@ -1924,6 +2133,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
               <button onClick={doPDF} style={{display:"flex",alignItems:"center",gap:5,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",cursor:"pointer",fontSize:13}}><Download size={14}/> PDF</button>
             </div>
           )}
+          {canManage&&<button onClick={()=>setShowImport(true)} style={{display:"flex",alignItems:"center",gap:6,background:"#06b6d420",color:"#06b6d4",border:"1px solid #06b6d4",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}><Download size={15} style={{transform:"rotate(180deg)"}}/> Importar CSV</button>}
           {canManage&&<button onClick={()=>closeAll(showMetas?"":"metas")} style={{display:"flex",alignItems:"center",gap:6,background:showMetas?"#f59e0b":"#f59e0b20",color:showMetas?"#000":"#f59e0b",border:"1px solid #f59e0b",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}>⚙ Metas por Período</button>}
           {canManage&&<button onClick={()=>closeAll(showFeriados?"":"feriados")} style={{display:"flex",alignItems:"center",gap:6,background:showFeriados?"#8b5cf6":"#8b5cf620",color:showFeriados?"#fff":"#8b5cf6",border:"1px solid #8b5cf6",borderRadius:8,padding:"9px 16px",cursor:"pointer",fontWeight:600,fontSize:14}}><Calendar size={15}/> Feriados</button>}
           {entries.length>0&&(
@@ -2219,6 +2429,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser}) {
           <div style={{color:T.faint,fontSize:13}}>Clique em <strong style={{color:"#60a5fa"}}>Lançar KPIs</strong> para começar a acompanhar seu mês</div>
         </div>
       )}
+      {showImport&&<ImportCSVModal T={T} existingEntries={entries} onClose={()=>setShowImport(false)} onImport={importEntries}/>}
     </>
   );
 }
@@ -2810,6 +3021,8 @@ export default function App() {
   const [currentUser,   setCurrentUser]   =useState(null);
   const [usersExist,    setUsersExist]    =useState(true);
   const [authLoading,   setAuthLoading]   =useState(true);
+  const [showPalette,   setShowPalette]   =useState(false);
+  const [newEntrySignal,setNewEntrySignal]=useState(0);
   const T={...THEMES[dark?"dark":"light"],compact};
   useGlobalCSS();
 
@@ -2828,6 +3041,18 @@ export default function App() {
       setAuthLoading(false);
     })();
   },[]);
+  // Atalhos de teclado: Ctrl/Cmd+K abre a busca rápida; "N" (fora de campos de texto) cria um lançamento
+  useEffect(()=>{
+    const fn=(e)=>{
+      if(!currentUser)return;
+      const tag=(e.target?.tagName||"").toLowerCase();
+      const typing=tag==="input"||tag==="textarea"||tag==="select"||e.target?.isContentEditable;
+      if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();setShowPalette(p=>!p);return;}
+      if(!typing&&!showPalette&&e.key.toLowerCase()==="n"){e.preventDefault();setPage("diario");setNewEntrySignal(s=>s+1);}
+    };
+    window.addEventListener("keydown",fn);
+    return()=>window.removeEventListener("keydown",fn);
+  },[showPalette,currentUser]);
 
   const logout=()=>{logAudit(currentUser,"logout",`Logout realizado`);setCurrentUser(null);setPage("home");setSidebarOpen(false);toast("Sessão encerrada.","info");};
 
@@ -2857,6 +3082,13 @@ export default function App() {
       {presentMode&&<PresentMode onExit={()=>setPresentMode(false)}/>}
       {pdfContent&&<PDFModal content={pdfContent} title={pdfTitle} onClose={()=>setPdfContent(null)}/>}
       <ToastContainer toasts={toasts}/>
+      {showPalette&&(
+        <CommandPalette T={T} dark={dark} currentUser={currentUser}
+          onClose={()=>setShowPalette(false)}
+          onNavigate={goTo}
+          onNewEntry={()=>{setPage("diario");setNewEntrySignal(s=>s+1);}}
+          onToggleTheme={()=>setDark(d=>!d)}/>
+      )}
       {currentUser?.role==="operador"&&!currentUser.onboarded&&(
         <OnboardingModal T={T} userName={currentUser.nome} onDismiss={async()=>{
           const updated={...currentUser,onboarded:true};
@@ -2918,7 +3150,10 @@ export default function App() {
           <button onClick={logout} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"transparent",color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px",cursor:"pointer",fontSize:12,fontWeight:600}}>
             <LogOut size={13}/> Sair
           </button>
-          <div style={{fontSize:10,color:T.faint,marginTop:8,textAlign:"center"}}>v1.9.0 · Dashboard Gerencial</div>
+          <div onClick={()=>setShowPalette(true)} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:10.5,color:T.faint,marginTop:10,cursor:"pointer",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 8px"}}>
+            🔍 Busca rápida <span style={{border:`1px solid ${T.border}`,borderRadius:4,padding:"1px 5px"}}>Ctrl+K</span>
+          </div>
+          <div style={{fontSize:10,color:T.faint,marginTop:8,textAlign:"center"}}>v2.0.0 · Dashboard Gerencial</div>
         </div>
       </div>
 
@@ -2950,7 +3185,7 @@ export default function App() {
         </div>
         <div className="dg-page" style={{padding:compact?16:24,flex:1}}>
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
-          {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser}/>}
+          {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser} newEntrySignal={newEntrySignal}/>}
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey} currentUser={currentUser}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
