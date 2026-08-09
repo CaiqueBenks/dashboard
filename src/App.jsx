@@ -1161,14 +1161,19 @@ function PctBadge({p,inv=false,T}) {
   if(p==null)return <div style={{fontSize:11,color:T.faint,marginTop:6}}>Meta não definida</div>;
   const c=pctColor(p,inv);
   const label=inv?(p<=80?"✓ Abaixo da meta":p<=100?"⚠ Na meta":"✕ Acima da meta"):(p>=100?"✓ Meta atingida":p>=70?"⚠ Em andamento":"✕ Abaixo do esperado");
+  const pct=Math.max(0,Math.min(p,100));
+  const r=16,circ=2*Math.PI*r;
+  const offset=circ*(1-pct/100);
   return (
-    <div style={{marginTop:10}}>
-      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:4}}>
-        <span style={{color:c,fontWeight:500}}>{label}</span>
-        <span style={{color:c,fontWeight:700}}>{Math.round(Math.min(p,999))}%</span>
-      </div>
-      <div style={{background:T.border,borderRadius:4,height:5}}>
-        <div style={{width:Math.min(p,100)+"%",height:"100%",borderRadius:4,background:c,transition:"width .5s"}}/>
+    <div style={{marginTop:10,display:"flex",alignItems:"center",gap:10}}>
+      <svg width="40" height="40" style={{flexShrink:0,transform:"rotate(-90deg)"}}>
+        <circle cx="20" cy="20" r={r} fill="none" stroke={T.border} strokeWidth="4"/>
+        <circle cx="20" cy="20" r={r} fill="none" stroke={c} strokeWidth="4" strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={offset} style={{transition:"stroke-dashoffset .6s ease"}}/>
+      </svg>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:10.5,color:c,fontWeight:500,lineHeight:1.3}}>{label}</div>
+        <div style={{fontSize:15,color:c,fontWeight:700}}>{Math.round(Math.min(p,999))}%</div>
       </div>
     </div>
   );
@@ -1178,20 +1183,31 @@ function DeltaCard({label,curr,prev,color,T,inv=false}) {
   const d=calcDelta(curr,prev);
   const good=d==null?null:(inv?!d.up:d.up);
   const gc=good===null?"#64748b":good?"#10b981":"#ef4444";
+  const max=Math.max(Math.abs(curr||0),Math.abs(prev||0))||1;
+  const currH=curr!=null?Math.max(4,(Math.abs(curr)/max)*38):0;
+  const prevH=prev!=null?Math.max(4,(Math.abs(prev)/max)*38):0;
   return (
-    <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px"}}>
-      <div style={{fontSize:11,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.4}}>{label}</div>
-      <div style={{fontSize:18,fontWeight:700,color}}>{fmtRS(curr)}</div>
-      {d!=null ? (
-        <div style={{display:"flex",alignItems:"center",gap:4,marginTop:6}}>
-          {d.d===0?<Minus size={14} color="#64748b"/>:d.up?<ArrowUpRight size={14} color={gc}/>:<ArrowDownRight size={14} color={gc}/>}
-          <span style={{fontSize:12,color:gc,fontWeight:600}}>{d.up?"+":""}{fmtRS(d.d)}</span>
-          <span style={{fontSize:11,color:T.faint}}>({d.up?"+":""}{d.pct.toFixed(1)}%)</span>
+    <div style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:"12px 14px",display:"flex",gap:12,alignItems:"flex-end"}}>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,color:T.muted,marginBottom:6,textTransform:"uppercase",letterSpacing:.4}}>{label}</div>
+        <div style={{fontSize:18,fontWeight:700,color}}>{fmtRS(curr)}</div>
+        {d!=null ? (
+          <div style={{display:"flex",alignItems:"center",gap:4,marginTop:6}}>
+            {d.d===0?<Minus size={14} color="#64748b"/>:d.up?<ArrowUpRight size={14} color={gc}/>:<ArrowDownRight size={14} color={gc}/>}
+            <span style={{fontSize:12,color:gc,fontWeight:600}}>{d.up?"+":""}{fmtRS(d.d)}</span>
+            <span style={{fontSize:11,color:T.faint}}>({d.up?"+":""}{d.pct.toFixed(1)}%)</span>
+          </div>
+        ):(
+          <div style={{fontSize:11,color:T.faint,marginTop:6}}>Sem mês anterior</div>
+        )}
+        <div style={{fontSize:10,color:T.faint,marginTop:4}}>vs mês anterior</div>
+      </div>
+      {prev!=null&&curr!=null&&(
+        <div style={{display:"flex",alignItems:"flex-end",gap:5,height:42,flexShrink:0}} title={`Anterior: ${fmtRS(prev)} · Atual: ${fmtRS(curr)}`}>
+          <div style={{width:9,height:prevH,background:T.border,borderRadius:2,transition:"height .5s ease"}}/>
+          <div style={{width:9,height:currH,background:color,borderRadius:2,transition:"height .5s ease"}}/>
         </div>
-      ):(
-        <div style={{fontSize:11,color:T.faint,marginTop:6}}>Sem mês anterior</div>
       )}
-      <div style={{fontSize:10,color:T.faint,marginTop:4}}>vs mês anterior</div>
     </div>
   );
 }
@@ -1734,6 +1750,7 @@ function HomePage({T,onNavigate}) {
   const [daily,  setDaily]  =useState([]);
   const [metasByMonth,setMetasByMonth]=useState({});
   const [closed, setClosed] =useState([]);
+  const [produtosByMonth,setProdutosByMonth]=useState({});
   const [loading,setLoading]=useState(true);
   const [cardOrder,setCardOrder]=useState(null); // array de labels, ordem preferida do usuário
   const [dragId,   setDragId]   =useState(null);
@@ -1745,6 +1762,7 @@ function HomePage({T,onNavigate}) {
       if(Object.keys(mbm).length===0){try{const m=await window.storage.get("diario_metas");if(m)mbm={default:JSON.parse(m.value)};}catch(_){}}
       setMetasByMonth(mbm);
       try{const r=await window.storage.get("closed_months");if(r)setClosed(JSON.parse(r.value));}catch(_){}
+      try{const r=await window.storage.get("diario_produtos_mensais");if(r)setProdutosByMonth(JSON.parse(r.value));}catch(_){}
       try{const r=await window.storage.get("home_card_order");if(r)setCardOrder(JSON.parse(r.value));}catch(_){}
       setLoading(false);
     })();
@@ -1769,6 +1787,17 @@ function HomePage({T,onNavigate}) {
   const currFat=latest?.faturamento;
   const currVendas=latest?.vendas;
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+
+  // Mix de produtos do mês fechado mais recente que tiver produtos lançados
+  const mixMonthKey=[...Object.keys(produtosByMonth)].filter(k=>produtosByMonth[k]?.length>0).sort().slice(-1)[0];
+  const mixProdutos=mixMonthKey?(()=>{
+    const rows=produtosByMonth[mixMonthKey];
+    return MATERIAIS.map(m=>{
+      const rs=rows.filter(r=>r.material===m).reduce((s,r)=>s+(parseBRL(r.faturadoRS)||0),0);
+      const kg=rows.filter(r=>r.material===m).reduce((s,r)=>s+(parseBRL(r.faturadoKG)||0),0);
+      return rs||kg?{tipo:m,rs,kg}:null;
+    }).filter(Boolean);
+  })():[];
 
   // Lembrete: existe lançamento de um mês anterior ao atual que ainda não foi fechado?
   const monthNotClosed=latest&&activeMonth<today().slice(0,7)?activeMonth:null;
@@ -1905,6 +1934,13 @@ function HomePage({T,onNavigate}) {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {mixProdutos.length>0&&(
+        <div style={{...cSt,marginBottom:16,borderTop:"3px solid #8b5cf6"}}>
+          <div style={{fontSize:11,color:T.faint,marginBottom:2}}>Dados de {monthLabel(mixMonthKey+"-01")}</div>
+          <ProductMixPie produtos={mixProdutos} T={T}/>
         </div>
       )}
 
