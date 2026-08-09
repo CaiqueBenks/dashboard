@@ -87,8 +87,14 @@ function useGlobalCSS() {
 
       @media print {
         .no-print { display: none !important; }
-        .dg-main  { margin-left: 0 !important; }
-        @page { margin: 10mm; size: A4 landscape; }
+        .dg-sidebar   { display: none !important; }
+        .dg-topbar    { display: none !important; }
+        .dg-overlay   { display: none !important; }
+        .dg-main      { margin-left: 0 !important; }
+        .dg-page      { padding: 0 !important; }
+        body, html    { background: #fff !important; }
+        button        { display: none !important; }
+        @page { margin: 12mm; size: A4 landscape; }
       }
     `;
     document.head.appendChild(el);
@@ -255,23 +261,7 @@ const logAudit = async (user, action, details="") => {
   }catch(_){}
 };
 
-const printDashboard = () => {
-  const style = document.createElement("style");
-  style.id = "print-override";
-  style.innerHTML = `
-    @media print {
-      body > div > div:first-child { display: none !important; }
-      body > div > div:last-child > div:first-child { display: none !important; }
-      body > div > div:last-child { margin-left: 0 !important; }
-      body { background: #fff !important; }
-      button { display: none !important; }
-      @page { margin: 15mm; size: A4 landscape; }
-    }
-  `;
-  document.head.appendChild(style);
-  window.print();
-  setTimeout(() => { const s = document.getElementById("print-override"); if(s) s.remove(); }, 1000);
-};
+const printDashboard = () => { window.print(); };
 
 // ── PDFModal ─────────────────────────────────────────────────
 function PDFModal({content,title,onClose}) {
@@ -302,7 +292,7 @@ function ToastContainer({toasts}) {
     info:   {bg:"#3b82f6",icon:"ℹ"},
   };
   return (
-    <div style={{position:"fixed",bottom:20,right:20,zIndex:100000,display:"flex",flexDirection:"column",gap:10,alignItems:"flex-end",pointerEvents:"none"}}>
+    <div className="no-print" style={{position:"fixed",bottom:20,right:20,zIndex:100000,display:"flex",flexDirection:"column",gap:10,alignItems:"flex-end",pointerEvents:"none"}}>
       {toasts.map(t=>{
         const c=cfg[t.type]||cfg.success;
         return (
@@ -386,7 +376,7 @@ function CommandPalette({T,onClose,onNavigate,onNewEntry,onToggleTheme,dark,curr
   },[filtered,selIdx,onClose]);
 
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:99999,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"12vh"}}>
+    <div className="no-print" onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:99999,display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"12vh"}}>
       <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:520,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,boxShadow:"0 24px 60px rgba(0,0,0,.4)",overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:`1px solid ${T.border}`}}>
           <span style={{fontSize:16,color:T.faint}}>🔍</span>
@@ -416,45 +406,43 @@ function CommandPalette({T,onClose,onNavigate,onNewEntry,onToggleTheme,dark,curr
 // ── AuthScreen: login OU criação do primeiro admin (first-run) ──
 function AuthScreen({dark,setDark,usersExist,onLogin}) {
   const T=THEMES[dark?"dark":"light"];
-  const [mode]=useState(usersExist?"login":"setup");
+  const [mode,setMode]=useState(usersExist?"login":"setup"); // login | setup | recover
   const [nome,setNome]=useState("");
   const [username,setUsername]=useState("");
   const [password,setPassword]=useState("");
   const [confirm,setConfirm]=useState("");
+  const [secQuestion,setSecQuestion]=useState("");
+  const [secAnswer,setSecAnswer]=useState("");
   const [showPw,setShowPw]=useState(false);
   const [err,setErr]=useState("");
   const [busy,setBusy]=useState(false);
 
-  const MAX_ATTEMPTS=5, LOCK_MS=5*60*1000;
+  // ── Recuperação de senha (pergunta de segurança) ──
+  const [recStep,setRecStep]=useState("username"); // username | answer | done
+  const [recUser,setRecUser]=useState(null);
+  const [recAnswer,setRecAnswer]=useState("");
+  const [recNewPw,setRecNewPw]=useState("");
+  const [recConfirmPw,setRecConfirmPw]=useState("");
+
+  const resetFields=()=>{setUsername("");setPassword("");setConfirm("");setSecQuestion("");setSecAnswer("");setErr("");setRecStep("username");setRecUser(null);setRecAnswer("");setRecNewPw("");setRecConfirmPw("");};
+  const goTo=(m)=>{resetFields();setMode(m);};
+
   const doLogin=async()=>{
     setErr("");
     if(!username||!password){setErr("Preencha usuário e senha.");return;}
     setBusy(true);
     const uname=username.trim().toLowerCase();
     try{
-      let attempts={};
-      try{const r=await window.storage.get("login_attempts");if(r)attempts=JSON.parse(r.value);}catch(_){}
-      const rec=attempts[uname];
-      if(rec?.lockedUntil&&rec.lockedUntil>Date.now()){
-        const mins=Math.ceil((rec.lockedUntil-Date.now())/60000);
-        setErr(`Muitas tentativas erradas. Tente novamente em ${mins} min.`);
-        setBusy(false);return;
-      }
       let users=[];
       try{const r=await window.storage.get("app_users");if(r)users=JSON.parse(r.value);}catch(_){}
       const hash=await sha256(password);
       const u=users.find(x=>x.username===uname&&x.passwordHash===hash);
       if(!u){
-        const count=(rec?.count||0)+1;
-        const locked=count>=MAX_ATTEMPTS;
-        const updated={...attempts,[uname]:{count,lockedUntil:locked?Date.now()+LOCK_MS:null}};
-        try{await window.storage.set("login_attempts",JSON.stringify(updated));}catch(_){}
-        setErr(locked?`Muitas tentativas erradas. Login bloqueado por 5 minutos.`:`Usuário ou senha inválidos. (${count}/${MAX_ATTEMPTS} tentativas antes do bloqueio)`);
-        await logAudit(null,"login_falhou",`Tentativa malsucedida para "${uname}" (${count}/${MAX_ATTEMPTS})`);
+        setErr("Usuário ou senha inválidos.");
+        await logAudit(null,"login_falhou",`Tentativa malsucedida para "${uname}"`);
         setBusy(false);return;
       }
       if(u.active===false){setErr("Este usuário está desativado. Fale com um administrador.");setBusy(false);return;}
-      if(rec){const{[uname]:_,...rest}=attempts;try{await window.storage.set("login_attempts",JSON.stringify(rest));}catch(_){}}
       await logAudit(u,"login",`Login realizado`);
       onLogin(u);
     }catch(_){setErr("Erro ao autenticar. Tente novamente.");}
@@ -466,10 +454,12 @@ function AuthScreen({dark,setDark,usersExist,onLogin}) {
     if(!nome||!username||!password){setErr("Preencha todos os campos.");return;}
     if(password.length<4){setErr("A senha deve ter ao menos 4 caracteres.");return;}
     if(password!==confirm){setErr("As senhas não coincidem.");return;}
+    if(!secQuestion||!secAnswer){setErr("Defina uma pergunta de segurança — ela será usada caso você esqueça a senha.");return;}
     setBusy(true);
     try{
       const hash=await sha256(password);
-      const admin={id:"u_"+Date.now(),nome,username:username.trim().toLowerCase(),passwordHash:hash,role:"admin",active:true,createdAt:today()};
+      const answerHash=await sha256(secAnswer.trim().toLowerCase());
+      const admin={id:"u_"+Date.now(),nome,username:username.trim().toLowerCase(),passwordHash:hash,role:"admin",active:true,createdAt:today(),securityQuestion:secQuestion,securityAnswerHash:answerHash};
       try{await window.storage.set("app_users",JSON.stringify([admin]));}catch(_){}
       await logAudit(admin,"criar_admin",`Conta de administrador criada (primeiro acesso)`);
       onLogin(admin);
@@ -477,8 +467,46 @@ function AuthScreen({dark,setDark,usersExist,onLogin}) {
     setBusy(false);
   };
 
+  // ── Fluxo "Esqueci minha senha" ──
+  const findRecUser=async()=>{
+    setErr("");
+    if(!username){setErr("Digite seu usuário.");return;}
+    setBusy(true);
+    try{
+      let users=[];
+      try{const r=await window.storage.get("app_users");if(r)users=JSON.parse(r.value);}catch(_){}
+      const u=users.find(x=>x.username===username.trim().toLowerCase());
+      if(!u){setErr("Usuário não encontrado.");setBusy(false);return;}
+      if(!u.securityQuestion){setErr("Este usuário não tem uma pergunta de segurança configurada. Peça a um administrador para redefinir sua senha em Usuários.");setBusy(false);return;}
+      setRecUser(u);setRecStep("answer");
+    }catch(_){setErr("Erro ao buscar usuário. Tente novamente.");}
+    setBusy(false);
+  };
+
+  const confirmRecover=async()=>{
+    setErr("");
+    if(!recAnswer){setErr("Responda a pergunta de segurança.");return;}
+    if(recNewPw.length<4){setErr("A nova senha deve ter ao menos 4 caracteres.");return;}
+    if(recNewPw!==recConfirmPw){setErr("As senhas não coincidem.");return;}
+    setBusy(true);
+    try{
+      const answerHash=await sha256(recAnswer.trim().toLowerCase());
+      if(answerHash!==recUser.securityAnswerHash){setErr("Resposta incorreta.");setBusy(false);return;}
+      const newHash=await sha256(recNewPw);
+      let users=[];
+      try{const r=await window.storage.get("app_users");if(r)users=JSON.parse(r.value);}catch(_){}
+      const updated=users.map(u=>u.id===recUser.id?{...u,passwordHash:newHash}:u);
+      try{await window.storage.set("app_users",JSON.stringify(updated));}catch(_){}
+      await logAudit(recUser,"redefinir_senha",`Senha redefinida via "Esqueci minha senha"`);
+      setRecStep("done");
+    }catch(_){setErr("Erro ao redefinir a senha. Tente novamente.");}
+    setBusy(false);
+  };
+
   const iSt={width:"100%",padding:"11px 14px",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,color:T.text,fontSize:14,boxSizing:"border-box"};
   const lSt={display:"block",fontSize:12,color:T.muted,marginBottom:6,fontWeight:600};
+
+  const titleFor={login:"Entre com seu usuário e senha",setup:"Primeiro acesso — crie a conta de administrador",recover:"Recuperar senha"}[mode];
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
@@ -486,43 +514,120 @@ function AuthScreen({dark,setDark,usersExist,onLogin}) {
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{background:"#3b82f620",borderRadius:14,width:56,height:56,display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,margin:"0 auto 14px"}}>📊</div>
           <div style={{fontSize:19,fontWeight:700,color:T.text}}>Dashboard Gerencial</div>
-          <div style={{fontSize:13,color:T.muted,marginTop:4}}>{mode==="setup"?"Primeiro acesso — crie a conta de administrador":"Entre com seu usuário e senha"}</div>
+          <div style={{fontSize:13,color:T.muted,marginTop:4}}>{titleFor}</div>
         </div>
 
         {mode==="setup"&&(
-          <div style={{marginBottom:14}}>
-            <label style={lSt}>Seu nome</label>
-            <input style={iSt} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Caique Silva"/>
+          <>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Seu nome</label>
+              <input style={iSt} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Ex: Caique Silva"/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Usuário</label>
+              <input style={iSt} value={username} onChange={e=>setUsername(e.target.value)} placeholder="Ex: caique" autoCapitalize="none"/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Senha</label>
+              <div style={{position:"relative"}}>
+                <input type={showPw?"text":"password"} style={{...iSt,paddingRight:40}} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"/>
+                <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}>
+                  {showPw?<EyeOff size={16}/>:<Eye size={16}/>}
+                </button>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Confirmar senha</label>
+              <input type={showPw?"text":"password"} style={iSt} value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="••••••••"/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Pergunta de segurança <span style={{fontWeight:400,color:T.faint}}>(usada em "Esqueci minha senha")</span></label>
+              <input style={iSt} value={secQuestion} onChange={e=>setSecQuestion(e.target.value)} placeholder="Ex: Nome do seu primeiro animal de estimação"/>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={lSt}>Resposta</label>
+              <input style={iSt} value={secAnswer} onChange={e=>setSecAnswer(e.target.value)} placeholder="Sua resposta" onKeyDown={e=>{if(e.key==="Enter")doSetup();}}/>
+            </div>
+          </>
+        )}
+
+        {mode==="login"&&(
+          <>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Usuário</label>
+              <input style={iSt} value={username} onChange={e=>setUsername(e.target.value)} placeholder="Ex: caique" autoCapitalize="none" onKeyDown={e=>{if(e.key==="Enter")doLogin();}}/>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={lSt}>Senha</label>
+              <div style={{position:"relative"}}>
+                <input type={showPw?"text":"password"} style={{...iSt,paddingRight:40}} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>{if(e.key==="Enter")doLogin();}}/>
+                <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}>
+                  {showPw?<EyeOff size={16}/>:<Eye size={16}/>}
+                </button>
+              </div>
+            </div>
+            <div style={{textAlign:"right",marginBottom:8}}>
+              <button onClick={()=>goTo("recover")} style={{background:"transparent",border:"none",color:"#3b82f6",cursor:"pointer",fontSize:12,fontWeight:600}}>Esqueci minha senha</button>
+            </div>
+          </>
+        )}
+
+        {mode==="recover"&&recStep==="username"&&(
+          <div style={{marginBottom:8}}>
+            <label style={lSt}>Usuário</label>
+            <input style={iSt} value={username} onChange={e=>setUsername(e.target.value)} placeholder="Digite seu usuário" autoCapitalize="none" onKeyDown={e=>{if(e.key==="Enter")findRecUser();}}/>
           </div>
         )}
-        <div style={{marginBottom:14}}>
-          <label style={lSt}>Usuário</label>
-          <input style={iSt} value={username} onChange={e=>setUsername(e.target.value)} placeholder="Ex: caique" autoCapitalize="none"
-            onKeyDown={e=>{if(e.key==="Enter")(mode==="setup"?doSetup:doLogin)();}}/>
-        </div>
-        <div style={{marginBottom:mode==="setup"?14:8}}>
-          <label style={lSt}>Senha</label>
-          <div style={{position:"relative"}}>
-            <input type={showPw?"text":"password"} style={{...iSt,paddingRight:40}} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••"
-              onKeyDown={e=>{if(e.key==="Enter")(mode==="setup"?doSetup:doLogin)();}}/>
-            <button type="button" onClick={()=>setShowPw(!showPw)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:T.muted,cursor:"pointer",display:"flex"}}>
-              {showPw?<EyeOff size={16}/>:<Eye size={16}/>}
-            </button>
-          </div>
-        </div>
-        {mode==="setup"&&(
-          <div style={{marginBottom:8}}>
-            <label style={lSt}>Confirmar senha</label>
-            <input type={showPw?"text":"password"} style={iSt} value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder="••••••••"
-              onKeyDown={e=>{if(e.key==="Enter")doSetup();}}/>
+        {mode==="recover"&&recStep==="answer"&&(
+          <>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>{recUser.securityQuestion}</label>
+              <input style={iSt} value={recAnswer} onChange={e=>setRecAnswer(e.target.value)} placeholder="Sua resposta"/>
+            </div>
+            <div style={{marginBottom:14}}>
+              <label style={lSt}>Nova senha</label>
+              <input type={showPw?"text":"password"} style={iSt} value={recNewPw} onChange={e=>setRecNewPw(e.target.value)} placeholder="••••••••"/>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={lSt}>Confirmar nova senha</label>
+              <input type={showPw?"text":"password"} style={iSt} value={recConfirmPw} onChange={e=>setRecConfirmPw(e.target.value)} placeholder="••••••••" onKeyDown={e=>{if(e.key==="Enter")confirmRecover();}}/>
+            </div>
+          </>
+        )}
+        {mode==="recover"&&recStep==="done"&&(
+          <div style={{background:"#10b98115",border:"1px solid #10b98140",color:"#10b981",borderRadius:8,padding:"14px",fontSize:13,marginBottom:14,textAlign:"center"}}>
+            ✓ Senha redefinida com sucesso! Você já pode entrar com a nova senha.
           </div>
         )}
 
         {err&&<div style={{background:"#ef444415",border:"1px solid #ef444440",color:"#ef4444",borderRadius:8,padding:"9px 12px",fontSize:12.5,marginBottom:14}}>{err}</div>}
 
-        <button onClick={mode==="setup"?doSetup:doLogin} disabled={busy} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1,marginTop:mode==="setup"?8:14}}>
-          <Lock size={15}/> {busy?"Aguarde...":mode==="setup"?"Criar Administrador e Entrar":"Entrar"}
-        </button>
+        {mode!=="recover"&&(
+          <button onClick={mode==="setup"?doSetup:doLogin} disabled={busy} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1,marginTop:8}}>
+            <Lock size={15}/> {busy?"Aguarde...":mode==="setup"?"Criar Administrador e Entrar":"Entrar"}
+          </button>
+        )}
+        {mode==="recover"&&recStep==="username"&&(
+          <button onClick={findRecUser} disabled={busy} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1,marginTop:8}}>
+            {busy?"Aguarde...":"Continuar"}
+          </button>
+        )}
+        {mode==="recover"&&recStep==="answer"&&(
+          <button onClick={confirmRecover} disabled={busy} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:busy?"default":"pointer",fontWeight:700,fontSize:14,opacity:busy?.7:1,marginTop:8}}>
+            {busy?"Aguarde...":"Redefinir Senha"}
+          </button>
+        )}
+        {mode==="recover"&&recStep==="done"&&(
+          <button onClick={()=>goTo("login")} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,background:"#3b82f6",color:"#fff",border:"none",borderRadius:8,padding:"12px",cursor:"pointer",fontWeight:700,fontSize:14}}>
+            Ir para o Login
+          </button>
+        )}
+
+        {mode==="recover"&&(
+          <div style={{textAlign:"center",marginTop:14}}>
+            <button onClick={()=>goTo("login")} style={{background:"transparent",border:"none",color:T.faint,cursor:"pointer",fontSize:12}}>← Voltar para o login</button>
+          </div>
+        )}
 
         <div style={{textAlign:"center",marginTop:20}}>
           <button onClick={()=>setDark(!dark)} style={{background:"transparent",border:"none",color:T.faint,cursor:"pointer",fontSize:12,display:"inline-flex",alignItems:"center",gap:5}}>
@@ -3159,7 +3264,7 @@ export default function App() {
 
       {/* Main */}
       <div className="dg-main" style={{marginLeft:240,flex:1,minHeight:"100vh",display:"flex",flexDirection:"column"}}>
-        <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:T.compact?"10px 24px":"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,transition:"background .2s",gap:12}}>
+        <div className="dg-topbar" style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:T.compact?"10px 24px":"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:50,transition:"background .2s",gap:12}}>
           <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
             <button onClick={()=>setSidebarOpen(true)} className="dg-hamburger" style={{background:T.card2,border:`1px solid ${T.border}`,color:T.sub,borderRadius:8,padding:8,cursor:"pointer",alignItems:"center"}}><Menu size={16}/></button>
             <div style={{fontSize:18,fontWeight:700,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{titles[page]}</div>
