@@ -30,6 +30,21 @@ function useGlobalCSS() {
         0%,100% { transform: scale(1); opacity: .85 }
         50%     { transform: scale(1.05); opacity: 1 }
       }
+      @keyframes glowPulse {
+        0%,100% { box-shadow: 0 0 0 0 var(--glow, transparent); }
+        50%     { box-shadow: 0 0 18px 1px var(--glow, transparent); }
+      }
+      @keyframes iconPop {
+        0%   { transform: scale(.55); opacity: .3; }
+        60%  { transform: scale(1.18); }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      .dg-glow {
+        animation: glowPulse 2.8s ease-in-out infinite;
+      }
+      .dg-icon-pop {
+        animation: iconPop .45s cubic-bezier(.34,1.56,.64,1);
+      }
       .dg-lift {
         transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
         cursor: default;
@@ -1812,11 +1827,19 @@ function HomePage({T,onNavigate}) {
   const venSpark=deltaSeries("vendas");
   const atrSpark=daily.filter(e=>e.atrasos!=null).slice(-14).map(e=>e.atrasos);
 
+  // Resumo do Dia: só aparece quando o último lançamento é de hoje
+  const isToday=latest?.date===today();
+  const fatSparkFull=deltaSeries("faturamento"); // reaproveita, já tem só valores válidos
+  const venSparkFull=deltaSeries("vendas");
+  const todayFatDelta=isToday&&fatSparkFull.length>0?fatSparkFull[fatSparkFull.length-1]:null;
+  const todayVenDelta=isToday&&venSparkFull.length>0?venSparkFull[venSparkFull.length-1]:null;
+  const week7=fatSparkFull.slice(-7);
+
   const summaryCards=[
-    {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",emoji:"💰",   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true,spark:fatSpark},
-    {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true,spark:atrSpark},
-    {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",emoji:"🛒",  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true,spark:venSpark},
-    {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",emoji:"🗂️",        sub:"no histórico",isRS:false,spark:null},
+    {label:"Faturamento Acumulado",val:currFat,       color:"#3b82f6",emoji:"💰",   sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true,spark:fatSpark,glow:false},
+    {label:"Atrasos",               val:latest?.atrasos,color:atrasoAlt?"#ef4444":"#10b981",emoji:"⏰",sub:atrasoAlt?"⚠ Acima da meta":"✓ Dentro da meta",isRS:true,spark:atrSpark,glow:latest!=null&&!atrasoAlt},
+    {label:"Vendas Acumuladas",     val:currVendas,   color:"#10b981",emoji:"🛒",  sub:latest?`Até ${toDisplay(latest.date)}`:"Sem lançamentos",isRS:true,spark:venSpark,glow:false},
+    {label:"Meses Fechados",        val:closed.length,color:"#8b5cf6",emoji:"🗂️",        sub:"no histórico",isRS:false,spark:null,glow:false},
   ].sort((a,b)=>{
     if(!cardOrder)return 0;
     const ia=cardOrder.indexOf(a.label),ib=cardOrder.indexOf(b.label);
@@ -1866,23 +1889,52 @@ function HomePage({T,onNavigate}) {
         </div>
       )}
 
+      {isToday&&(
+        <div style={{background:"linear-gradient(135deg,#3b82f6 0%,#1d4ed8 100%)",borderRadius:16,padding:24,marginBottom:20,boxShadow:"0 12px 32px rgba(59,130,246,.28)",color:"#fff"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:16}}>
+            <div>
+              <div style={{fontSize:12,opacity:.85,textTransform:"uppercase",letterSpacing:.6,marginBottom:4}}>✨ Resumo do Dia</div>
+              <div style={{fontSize:17,fontWeight:700,marginBottom:14,textTransform:"capitalize"}}>{getDynDate()}</div>
+              <div style={{display:"flex",gap:28,flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:11,opacity:.8,marginBottom:3}}>Faturado hoje</div>
+                  <div style={{fontSize:24,fontWeight:800}}>{todayFatDelta!=null?<AnimatedNumber value={todayFatDelta} format={fmtRS}/>:"—"}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:11,opacity:.8,marginBottom:3}}>Vendido hoje</div>
+                  <div style={{fontSize:24,fontWeight:800}}>{todayVenDelta!=null?<AnimatedNumber value={todayVenDelta} format={fmtRS}/>:"—"}</div>
+                </div>
+              </div>
+            </div>
+            {week7.length>=2&&(
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:10.5,opacity:.8,marginBottom:6}}>Últimos {week7.length} dias</div>
+                <div style={{background:"rgba(255,255,255,.12)",borderRadius:10,padding:"8px 12px"}}>
+                  <Sparkline data={week7} color="#ffffff" width={110} height={34}/>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,color:T.faint,fontSize:11.5}}>
         <Menu size={12}/> Arraste os cards pelo cabeçalho para reordenar
       </div>
       <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
-        {summaryCards.map(({label,val,color,emoji,sub,isRS,spark})=>(
+        {summaryCards.map(({label,val,color,emoji,sub,isRS,spark,glow})=>(
           <div key={label}
             draggable
             onDragStart={()=>setDragId(label)}
             onDragOver={e=>e.preventDefault()}
             onDrop={()=>{reorderCards(dragId,label);setDragId(null);}}
             onDragEnd={()=>setDragId(null)}
-            className="dg-lift" style={{...cSt,borderTop:`3px solid ${color}`,opacity:dragId===label?0.4:1,cursor:"grab"}}>
+            className={`dg-lift${glow?" dg-glow":""}`} style={{...cSt,borderTop:`3px solid ${color}`,opacity:dragId===label?0.4:1,cursor:"grab","--glow":color+"80"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8,display:"flex",alignItems:"center",gap:5}}>
                 <Menu size={10} style={{opacity:.5}}/>{label}
               </div>
-              <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
+              <div key={val} className="dg-icon-pop" style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
             <div style={{fontSize:22,fontWeight:700,color}}>{val!=null?<AnimatedNumber value={val} format={isRS?fmtRS:fmtN}/>:"—"}</div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginTop:4,gap:8}}>
@@ -2467,11 +2519,13 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser,newEntrySig
 
       {/* KPI Cards */}
       <div className="dg-grid dg-grid-5" style={{display:"grid",gap:14,marginBottom:16}}>
-        {kpiDefs.map(({title,val,p,color,emoji,inv,showSem,prorated,metaRaw})=>(
-          <div key={title} className="dg-lift" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:`3px solid ${color}`,minWidth:0,opacity:hasData?1:0.45}}>
+        {kpiDefs.map(({title,val,p,color,emoji,inv,showSem,prorated,metaRaw})=>{
+          const glow=p!=null&&pctColor(p,inv)==="#10b981";
+          return (
+          <div key={title} className={`dg-lift${glow?" dg-glow":""}`} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20,borderTop:`3px solid ${color}`,minWidth:0,opacity:hasData?1:0.45,"--glow":"#10b98180"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
               <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>{title}</div>
-              <div style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
+              <div key={val} className="dg-icon-pop" style={{background:color+"20",borderRadius:8,padding:7,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",width:29,height:29}}><span style={{fontSize:16,lineHeight:1}}>{emoji}</span></div>
             </div>
             <div style={{fontSize:20,fontWeight:700,color:T.text,wordBreak:"break-word"}}>{val!=null?<AnimatedNumber value={val} format={fmtRS}/>:"—"}</div>
             <div style={{fontSize:11,color:T.muted,marginTop:2}}>{hasData?`Até ${toDisplay(latest.date)}`:"Sem dados"}</div>
@@ -2486,7 +2540,8 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser,newEntrySig
             )}
             <PctBadge p={p} inv={inv} T={T}/>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {hasData&&<DiasUteisProjecao entries={entries} metaFaturamento={metas.faturamento} T={T} extraHols={extraHols}/>}
