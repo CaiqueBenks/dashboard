@@ -221,7 +221,7 @@ const pctColor   = (p,inv) => { if(p==null)return"#64748b"; if(inv)return p<=80?
 const calcDelta  = (curr,prev) => { if(curr==null||prev==null||prev===0)return null; const d=curr-prev; return{d,pct:(d/prev)*100,up:d>=0}; };
 const getDynDate = () => new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 const getGreeting= () => { const h=new Date().getHours(); return h<12?"Bom dia":h<18?"Boa tarde":"Boa noite"; };
-const calcSem    = (proj,meta) => { if(!proj||!meta)return null; const r=proj/meta; if(r>=1)return{emoji:"🟢",label:"No ritmo!",color:"#10b981"}; if(r>=0.8)return{emoji:"🟡",label:"Atenção",color:"#f59e0b"}; return{emoji:"🔴",label:"Abaixo do ritmo",color:"#ef4444"}; };
+const calcSem    = (proj,meta) => { if(!proj||!meta)return null; const r=proj/meta; if(r>=1)return{emoji:"🟢",label:"No ritmo!",color:"#10b981",ratio:r}; if(r>=0.8)return{emoji:"🟡",label:"Atenção",color:"#f59e0b",ratio:r}; return{emoji:"🔴",label:"Abaixo do ritmo",color:"#ef4444",ratio:r}; };
 
 const FERIADOS_BR = new Set([
   "2025-01-01","2025-04-18","2025-04-21","2025-05-01","2025-06-19",
@@ -1194,6 +1194,28 @@ function PctBadge({p,inv=false,T}) {
   );
 }
 
+// ── SemGauge: anel de progresso pro "semáforo" de ritmo (projeção vs meta) ──
+function SemGauge({sem,T,size=36}) {
+  if(!sem)return null;
+  const pct=Math.max(0,Math.min(sem.ratio*100,100));
+  const r=(size-6)/2,circ=2*Math.PI*r,cx=size/2,cy=size/2;
+  const offset=circ*(1-pct/100);
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,padding:"6px 10px",background:sem.color+"12",borderRadius:8}}>
+      <svg width={size} height={size} style={{flexShrink:0,transform:"rotate(-90deg)"}}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={T.border} strokeWidth="3.5"/>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={sem.color} strokeWidth="3.5" strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={offset} style={{transition:"stroke-dashoffset .6s ease"}}/>
+        {sem.ratio>=1&&<circle cx={cx} cy={cy} r={r} fill="none" stroke={sem.color} strokeWidth="1" opacity="0.35"/>}
+      </svg>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:11,color:sem.color,fontWeight:600}}>{sem.label}</div>
+        <div style={{fontSize:10,color:T.faint}}>Projeção: {Math.round(sem.ratio*100)}% da meta</div>
+      </div>
+    </div>
+  );
+}
+
 function DeltaCard({label,curr,prev,color,T,inv=false}) {
   const d=calcDelta(curr,prev);
   const good=d==null?null:(inv?!d.up:d.up);
@@ -1610,26 +1632,29 @@ function DiasUteisProjecao({entries,metaFaturamento,T,extraHols=[]}) {
         )}
       </div>
       <div style={{...cSt,borderLeft:`4px solid ${projColor}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,gap:16}}>
           <div>
             <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Projeção de Fechamento</div>
             <div style={{fontSize:22,fontWeight:700,color:projColor}}>{projecao!=null?fmtRS(projecao):"—"}</div>
+            {meta!=null&&<div style={{fontSize:11,color:T.faint,marginTop:2}}>Meta: {fmtRS(meta)}</div>}
           </div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-            <div style={{background:projColor+"20",borderRadius:8,padding:7}}><TrendingUp size={15} color={projColor}/></div>
-            {sem&&<div style={{fontSize:12,fontWeight:600,color:sem.color}}>{sem.emoji} {sem.label}</div>}
-          </div>
+          {sem&&(()=>{
+            const pct=Math.max(0,Math.min(sem.ratio*100,100));
+            const r=25,circ=2*Math.PI*r,size=60;
+            const offset=circ*(1-pct/100);
+            return (
+              <div style={{position:"relative",width:size,height:size,flexShrink:0}}>
+                <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+                  <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={T.border} strokeWidth="5"/>
+                  <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={sem.color} strokeWidth="5" strokeLinecap="round"
+                    strokeDasharray={circ} strokeDashoffset={offset} style={{transition:"stroke-dashoffset .6s ease"}}/>
+                </svg>
+                <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:sem.color}}>{Math.round(sem.ratio*100)}%</div>
+              </div>
+            );
+          })()}
         </div>
-        {meta!=null&&projecao!=null&&(
-          <>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:T.muted,marginBottom:6}}>
-              <span>vs Meta: {fmtRS(meta)}</span><span style={{color:projColor,fontWeight:600}}>{pctProj.toFixed(1)}%</span>
-            </div>
-            <div style={{background:T.border,borderRadius:4,height:8}}>
-              <div style={{width:Math.min(pctProj,100)+"%",height:"100%",borderRadius:4,background:projColor}}/>
-            </div>
-          </>
-        )}
+        {sem&&<div style={{fontSize:12,fontWeight:600,color:sem.color,marginBottom:meta!=null&&projecao!=null?10:0}}>{sem.label}</div>}
         {neededPerDay!=null&&(
           <div style={{marginTop:12,padding:"10px 12px",background:neededPerDay>0?"#ef444415":"#10b98115",borderRadius:8,fontSize:13}}>
             <span style={{color:T.muted}}>Necessário/dia restante: </span>
@@ -2532,12 +2557,7 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser,newEntrySig
             {prorated&&wdInfo&&metaDiaria(metaRaw)!=null&&(
               <div style={{fontSize:10.5,color:T.faint,marginTop:3}}>Meta do dia: {fmtRS(metaDiaria(metaRaw))} · {wdInfo.passed}/{wdInfo.total}d úteis</div>
             )}
-            {showSem&&semaforo&&(
-              <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"5px 10px",background:semaforo.color+"15",borderRadius:8}}>
-                <span style={{fontSize:13}}>{semaforo.emoji}</span>
-                <span style={{fontSize:11,color:semaforo.color,fontWeight:600}}>{semaforo.label}</span>
-              </div>
-            )}
+            {showSem&&<SemGauge sem={semaforo} T={T}/>}
             <PctBadge p={p} inv={inv} T={T}/>
           </div>
           );
