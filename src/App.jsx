@@ -168,6 +168,44 @@ const THEMES = {
 };
 
 const MATERIAIS = ["Tubo","Barra","Vergalhão","Arame","Chapa","Laminado","Conexão","Diversos"];
+
+// ── Calculadora de Pesos: densidades de referência (g/cm³) e geometrias ──
+const LIGA_DENSIDADES = {
+  "Cobre":        8.96,
+  "Latão":        8.50,
+  "Alumínio":     2.70,
+  "Aço Inox":     7.90,
+  "Aço Carbono":  7.85,
+  "Bronze":       8.80,
+};
+const GEOMETRIAS = [
+  {id:"tubo_redondo",    label:"Tubo Redondo",      emoji:"⭕", fields:[{k:"od",label:"Diâmetro Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
+  {id:"tubo_quadrado",   label:"Tubo Quadrado",     emoji:"◻️", fields:[{k:"lado",label:"Lado Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
+  {id:"tubo_retangular", label:"Tubo Retangular",   emoji:"▭", fields:[{k:"largura",label:"Largura Externa (mm)"},{k:"altura",label:"Altura Externa (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
+  {id:"barra_redonda",   label:"Barra Redonda",     emoji:"🔵", fields:[{k:"d",label:"Diâmetro (mm)"}]},
+  {id:"barra_quadrada",  label:"Barra Quadrada",    emoji:"🟦", fields:[{k:"lado",label:"Lado (mm)"}]},
+  {id:"barra_retangular",label:"Barra Retangular",  emoji:"▬", fields:[{k:"largura",label:"Largura (mm)"},{k:"altura",label:"Altura (mm)"}]},
+  {id:"barra_sextavada", label:"Barra Sextavada",   emoji:"⬡", fields:[{k:"faces",label:"Distância Entre Faces (mm)"}]},
+  {id:"chapa_fita",      label:"Chapa / Fita",      emoji:"▯", fields:[{k:"largura",label:"Largura (mm)"},{k:"esp",label:"Espessura (mm)"}]},
+  {id:"arame",           label:"Arame",             emoji:"➰", fields:[{k:"d",label:"Diâmetro (mm)"}]},
+];
+// Retorna a área da seção transversal em mm², ou null se faltar algum campo/medida inválida
+const calcAreaSecao=(geoId,v)=>{
+  switch(geoId){
+    case "tubo_redondo": { const od=v.od,e=v.esp; if(!od||!e)return null; const id=od-2*e; if(id<0)return null; return Math.PI/4*(od*od-id*id); }
+    case "tubo_quadrado": { const a=v.lado,e=v.esp; if(!a||!e)return null; const i=a-2*e; if(i<0)return null; return a*a-i*i; }
+    case "tubo_retangular": { const a=v.largura,b=v.altura,e=v.esp; if(!a||!b||!e)return null; const ia=a-2*e,ib=b-2*e; if(ia<0||ib<0)return null; return a*b-ia*ib; }
+    case "barra_redonda": { const d=v.d; if(!d)return null; return Math.PI/4*d*d; }
+    case "barra_quadrada": { const a=v.lado; if(!a)return null; return a*a; }
+    case "barra_retangular": { const a=v.largura,b=v.altura; if(!a||!b)return null; return a*b; }
+    case "barra_sextavada": { const f=v.faces; if(!f)return null; return 0.8660254*f*f; }
+    case "chapa_fita": { const a=v.largura,e=v.esp; if(!a||!e)return null; return a*e; }
+    case "arame": { const d=v.d; if(!d)return null; return Math.PI/4*d*d; }
+    default: return null;
+  }
+};
+const parseNum=(v)=>{ if(v==null||v==="")return null; const s=String(v).trim().replace(",","."); const n=parseFloat(s); return isNaN(n)||n<0?null:n; };
+const fmtKg=(n)=>{ if(n==null)return "—"; const d=n<10?3:n<100?2:1; return new Intl.NumberFormat("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)+" kg"; };
 const LIGAS     = ["Cobre","Latão","Alumínio","Inox","Diversas"];
 const mkProdRow = (overrides={}) => ({id:"p_"+Date.now()+"_"+Math.random().toString(36).slice(2,7),material:MATERIAIS[0],liga:LIGAS[0],vendidoRS:"",vendidoKG:"",faturadoRS:"",faturadoKG:"",...overrides});
 // Mapeia categorias antigas (flat) para a nova taxonomia material×liga, na migração automática
@@ -2651,15 +2689,153 @@ function FechamentoDiario({T,onMonthClosed,onAtrasoAlert,currentUser,newEntrySig
 }
 
 // ── BibliotecaPage ───────────────────────────────────────────
-function BibliotecaPage({T}) {
+// ── PesoCalculadora: calculadora de peso por geometria + tabela de ligas ──
+function PesoCalculadora({T}) {
+  const [geoId,setGeoId]=useState("barra_redonda");
+  const [liga,setLiga]=useState("Aço Carbono");
+  const [densOverride,setDensOverride]=useState(null); // permite ajustar a densidade manualmente
+  const [vals,setVals]=useState({});
+  const [comprimento,setComprimento]=useState("");
+  const [qtd,setQtd]=useState("1");
+  const [showLigas,setShowLigas]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      try{const r=await window.storage.get("peso_calc_prefs");if(r){const p=JSON.parse(r.value);if(p.geoId)setGeoId(p.geoId);if(p.liga)setLiga(p.liga);}}catch(_){}
+    })();
+  },[]);
+  useEffect(()=>{
+    window.storage.set("peso_calc_prefs",JSON.stringify({geoId,liga})).catch(()=>{});
+    setVals({});
+  },[geoId]);
+  useEffect(()=>{ setDensOverride(null); },[liga]);
+
+  const geo=GEOMETRIAS.find(g=>g.id===geoId);
+  const densidade=densOverride??LIGA_DENSIDADES[liga];
+  const setField=(k)=>(e)=>setVals(p=>({...p,[k]:e.target.value}));
+  const parsedVals=Object.fromEntries(geo.fields.map(f=>[f.k,parseNum(vals[f.k])]));
+
+  const areaMM2=calcAreaSecao(geoId,parsedVals);
+  const compM=parseNum(comprimento);
+  const q=Math.max(1,parseInt(qtd)||1);
+  const pesoPorMetro=areaMM2!=null?(areaMM2*1000*densidade)/1_000_000:null; // kg/m
+  const pesoUnit=areaMM2!=null&&compM!=null?(areaMM2*(compM*1000)*densidade)/1_000_000:null; // kg (1 peça)
+  const pesoTotal=pesoUnit!=null?pesoUnit*q:null;
+
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
-  const comingSoon=[
-    {emoji:"⚖️", label:"Calculadora de Pesos",    desc:"Calcule o peso de barras, tubos e perfis a partir das dimensões e do material."},
-    {emoji:"📏", label:"Tabela de Barras",          desc:"Medidas padronizadas de barras chatas, redondas, quadradas e sextavadas."},
-    {emoji:"🔩", label:"Tabela de Tubos",           desc:"Dimensões e espessuras de tubos estruturais e industriais."},
-    {emoji:"📐", label:"Tabela de Laminados",       desc:"Perfis U, I, L e T com dimensões e pesos por metro."},
-    {emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição e propriedades das principais ligas de cobre, latão e alumínio."},
-    {emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns."},
+  const iSt={width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 11px",color:T.text,fontSize:14,boxSizing:"border-box",outline:"none"};
+  const lSt={display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600};
+
+  return (
+    <div>
+      <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
+        <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>⚖️ Calculadora de Pesos</div>
+        <div style={{fontSize:12,color:T.muted,marginBottom:18}}>Selecione a geometria e a liga, informe as medidas e o comprimento (em metros).</div>
+
+        <label style={lSt}>Geometria</label>
+        <div className="dg-grid dg-grid-3" style={{display:"grid",gap:8,marginBottom:16}}>
+          {GEOMETRIAS.map(g=>(
+            <button key={g.id} onClick={()=>setGeoId(g.id)} style={{
+              display:"flex",alignItems:"center",gap:8,padding:"9px 12px",borderRadius:8,cursor:"pointer",textAlign:"left",
+              background:geoId===g.id?"#3b82f620":T.card2,color:geoId===g.id?"#3b82f6":T.sub,
+              border:`1.5px solid ${geoId===g.id?"#3b82f6":T.border}`,fontSize:12.5,fontWeight:geoId===g.id?600:400,transition:"all .15s",
+            }}>
+              <span style={{fontSize:16}}>{g.emoji}</span>{g.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="dg-grid dg-grid-2" style={{display:"grid",gap:12,marginBottom:16}}>
+          <div>
+            <label style={lSt}>Liga / Material</label>
+            <select value={liga} onChange={e=>setLiga(e.target.value)} style={iSt}>
+              {Object.keys(LIGA_DENSIDADES).map(l=><option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lSt}>Densidade (g/cm³) <span style={{color:T.faint,fontWeight:400}}>— ajustável</span></label>
+            <input value={densOverride??densidade} onChange={e=>setDensOverride(parseNum(e.target.value)??densidade)} style={iSt}/>
+          </div>
+        </div>
+
+        <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12,marginBottom:16}}>
+          {geo.fields.map(f=>(
+            <div key={f.k}>
+              <label style={lSt}>{f.label}</label>
+              <input value={vals[f.k]||""} onChange={setField(f.k)} placeholder="Ex: 25,4" style={iSt}/>
+            </div>
+          ))}
+          <div>
+            <label style={lSt}>Comprimento (m)</label>
+            <input value={comprimento} onChange={e=>setComprimento(e.target.value)} placeholder="Ex: 6" style={iSt}/>
+          </div>
+          <div>
+            <label style={lSt}>Quantidade de peças</label>
+            <input value={qtd} onChange={e=>setQtd(e.target.value)} placeholder="1" style={iSt}/>
+          </div>
+        </div>
+
+        {areaMM2==null&&Object.values(vals).some(v=>v)&&(
+          <div style={{background:"#ef444415",border:"1px solid #ef444440",color:"#ef4444",borderRadius:8,padding:"9px 12px",fontSize:12.5,marginBottom:16}}>
+            Confira as medidas — para tubos, a espessura de parede não pode ser maior que metade da dimensão externa.
+          </div>
+        )}
+
+        <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12}}>
+          <div style={{background:T.card2,borderRadius:10,padding:"14px 16px",borderLeft:"3px solid #06b6d4"}}>
+            <div style={{fontSize:10.5,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>Peso por Metro</div>
+            <div style={{fontSize:19,fontWeight:700,color:"#06b6d4"}}>{pesoPorMetro!=null?fmtKg(pesoPorMetro):"—"}</div>
+          </div>
+          <div style={{background:T.card2,borderRadius:10,padding:"14px 16px",borderLeft:"3px solid #3b82f6"}}>
+            <div style={{fontSize:10.5,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>Peso por Peça</div>
+            <div style={{fontSize:19,fontWeight:700,color:"#3b82f6"}}>{pesoUnit!=null?fmtKg(pesoUnit):"—"}</div>
+          </div>
+          <div style={{background:T.card2,borderRadius:10,padding:"14px 16px",borderLeft:"3px solid #10b981"}}>
+            <div style={{fontSize:10.5,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>Peso Total ({q}x)</div>
+            <div style={{fontSize:19,fontWeight:700,color:"#10b981"}}>{pesoTotal!=null?fmtKg(pesoTotal):"—"}</div>
+          </div>
+        </div>
+        {areaMM2!=null&&(
+          <div style={{fontSize:11.5,color:T.faint,marginTop:12}}>Área da seção transversal: {new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(areaMM2)} mm² ({new Intl.NumberFormat("pt-BR",{maximumFractionDigits:4}).format(areaMM2/100)} cm²)</div>
+        )}
+      </div>
+
+      <div style={cSt}>
+        <button onClick={()=>setShowLigas(!showLigas)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",background:"transparent",border:"none",cursor:"pointer",padding:0}}>
+          <div style={{fontSize:14,fontWeight:600,color:T.text}}>🪙 Tabela de Ligas — Densidades de Referência</div>
+          {showLigas?<ChevronUp size={16} color={T.muted}/>:<ChevronDown size={16} color={T.muted}/>}
+        </button>
+        {showLigas&&(
+          <>
+            <div style={{fontSize:11.5,color:T.faint,margin:"10px 0 14px"}}>Valores médios de referência. Ligas específicas do fornecedor podem variar — ajuste a densidade na calculadora acima se necessário.</div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead><tr style={{borderBottom:`1px solid ${T.border}`}}><th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Liga</th><th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Densidade (g/cm³)</th></tr></thead>
+                <tbody>{Object.entries(LIGA_DENSIDADES).map(([l,d])=>(
+                  <tr key={l} style={{borderBottom:`1px solid ${T.border}50`}}>
+                    <td style={{padding:"8px 10px",color:T.text,fontWeight:500}}>{l}</td>
+                    <td style={{padding:"8px 10px",color:T.sub}}>{d.toFixed(2)}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BibliotecaPage({T}) {
+  const [showPesoCalc,setShowPesoCalc]=useState(false);
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const modules=[
+    {id:"peso",   emoji:"⚖️", label:"Calculadora de Pesos",    desc:"Calcule o peso de barras, tubos e perfis a partir das dimensões e do material.", ready:true},
+    {id:"barras", emoji:"📏", label:"Tabela de Barras",          desc:"Medidas padronizadas de barras chatas, redondas, quadradas e sextavadas.", ready:false},
+    {id:"tubos",  emoji:"🔩", label:"Tabela de Tubos",           desc:"Dimensões e espessuras de tubos estruturais e industriais.", ready:false},
+    {id:"lam",    emoji:"📐", label:"Tabela de Laminados",       desc:"Perfis U, I, L e T com dimensões e pesos por metro.", ready:false},
+    {id:"ligas",  emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição e propriedades das principais ligas de cobre, latão e alumínio.", ready:false},
+    {id:"conv",   emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns.", ready:false},
   ];
   return (
     <div>
@@ -2667,25 +2843,41 @@ function BibliotecaPage({T}) {
         <div style={{fontSize:40,marginBottom:16}}>📚</div>
         <div style={{fontSize:20,fontWeight:700,color:T.text,marginBottom:8}}>Biblioteca Técnica</div>
         <div style={{fontSize:14,color:T.muted,maxWidth:480,margin:"0 auto"}}>
-          Espaço reservado para ferramentas técnicas de consulta rápida. Em breve você terá acesso a calculadoras, tabelas de medidas e conversores diretamente aqui.
+          Espaço reservado para ferramentas técnicas de consulta rápida. Em breve você terá acesso a mais calculadoras, tabelas de medidas e conversores diretamente aqui.
         </div>
       </div>
 
       <div style={{fontSize:13,fontWeight:600,color:T.muted,textTransform:"uppercase",letterSpacing:.6,marginBottom:12}}>
-        Módulos previstos
+        Módulos
       </div>
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
-        {comingSoon.map(({emoji,label,desc})=>(
-          <div key={label} style={{...cSt,opacity:.65,cursor:"default",borderLeft:`3px solid ${T.border}`}}>
+        {modules.map(({id,emoji,label,desc,ready})=>(
+          <div key={label} onClick={()=>ready&&id==="peso"&&setShowPesoCalc(true)}
+            className={ready?"dg-lift":""}
+            style={{...cSt,opacity:ready?1:.65,cursor:ready?"pointer":"default",borderLeft:`3px solid ${ready?"#3b82f6":T.border}`}}>
             <div style={{fontSize:26,marginBottom:10}}>{emoji}</div>
             <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:6}}>{label}</div>
             <div style={{fontSize:12,color:T.muted,lineHeight:1.5}}>{desc}</div>
-            <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",background:T.card2,border:`1px solid ${T.border}`,borderRadius:20,fontSize:11,color:T.faint}}>
-              Em breve
+            <div style={{marginTop:12,display:"inline-flex",alignItems:"center",gap:5,padding:"3px 10px",background:ready?"#3b82f620":T.card2,border:`1px solid ${ready?"#3b82f6":T.border}`,borderRadius:20,fontSize:11,color:ready?"#3b82f6":T.faint,fontWeight:ready?600:400}}>
+              {ready?"Abrir →":"Em breve"}
             </div>
           </div>
         ))}
       </div>
+
+      {showPesoCalc&&(
+        <div className="no-print" style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowPesoCalc(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:760,maxHeight:"88vh",overflowY:"auto",borderRadius:16,boxShadow:"0 24px 60px rgba(0,0,0,.4)"}}>
+            <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div style={{fontSize:16,fontWeight:700,color:T.text}}>⚖️ Calculadora de Pesos</div>
+                <button onClick={()=>setShowPesoCalc(false)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer"}}><X size={20}/></button>
+              </div>
+              <PesoCalculadora T={T}/>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
