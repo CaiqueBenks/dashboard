@@ -2701,11 +2701,11 @@ function PesoCalculadora({T}) {
 
   useEffect(()=>{
     (async()=>{
-      try{const r=await window.storage.get("peso_calc_prefs");if(r){const p=JSON.parse(r.value);if(p.geoId)setGeoId(p.geoId);if(p.liga)setLiga(p.liga);}}catch(_){}
+      try{const r=await storage.get("peso_calc_prefs");if(r){const p=JSON.parse(r.value);if(p.geoId)setGeoId(p.geoId);if(p.liga)setLiga(p.liga);}}catch(_){}
     })();
   },[]);
   useEffect(()=>{
-    window.storage.set("peso_calc_prefs",JSON.stringify({geoId,liga})).catch(()=>{});
+    storage.set("peso_calc_prefs",JSON.stringify({geoId,liga})).catch(()=>{});
     setVals({});
   },[geoId]);
   useEffect(()=>{ setDensOverride(null); },[liga]);
