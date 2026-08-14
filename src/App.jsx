@@ -2701,11 +2701,11 @@ function PesoCalculadora({T}) {
 
   useEffect(()=>{
     (async()=>{
-      try{const r=await storage.get("peso_calc_prefs");if(r){const p=JSON.parse(r.value);if(p.geoId)setGeoId(p.geoId);if(p.liga)setLiga(p.liga);}}catch(_){}
+      try{const r=await window.storage.get("peso_calc_prefs");if(r){const p=JSON.parse(r.value);if(p.geoId)setGeoId(p.geoId);if(p.liga)setLiga(p.liga);}}catch(_){}
     })();
   },[]);
   useEffect(()=>{
-    storage.set("peso_calc_prefs",JSON.stringify({geoId,liga})).catch(()=>{});
+    window.storage.set("peso_calc_prefs",JSON.stringify({geoId,liga})).catch(()=>{});
     setVals({});
   },[geoId]);
   useEffect(()=>{ setDensOverride(null); },[liga]);
@@ -2826,8 +2826,7 @@ function PesoCalculadora({T}) {
   );
 }
 
-function BibliotecaPage({T}) {
-  const [showPesoCalc,setShowPesoCalc]=useState(false);
+function BibliotecaPage({T,onNavigate}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const modules=[
     {id:"peso",   emoji:"⚖️", label:"Calculadora de Pesos",    desc:"Calcule o peso de barras, tubos e perfis a partir das dimensões e do material.", ready:true},
@@ -2852,7 +2851,7 @@ function BibliotecaPage({T}) {
       </div>
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
         {modules.map(({id,emoji,label,desc,ready})=>(
-          <div key={label} onClick={()=>ready&&id==="peso"&&setShowPesoCalc(true)}
+          <div key={label} onClick={()=>ready&&id==="peso"&&onNavigate&&onNavigate("calc-pesos")}
             className={ready?"dg-lift":""}
             style={{...cSt,opacity:ready?1:.65,cursor:ready?"pointer":"default",borderLeft:`3px solid ${ready?"#3b82f6":T.border}`}}>
             <div style={{fontSize:26,marginBottom:10}}>{emoji}</div>
@@ -2864,20 +2863,16 @@ function BibliotecaPage({T}) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
 
-      {showPesoCalc&&(
-        <div className="no-print" style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowPesoCalc(false)}>
-          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:760,maxHeight:"88vh",overflowY:"auto",borderRadius:16,boxShadow:"0 24px 60px rgba(0,0,0,.4)"}}>
-            <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:20}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                <div style={{fontSize:16,fontWeight:700,color:T.text}}>⚖️ Calculadora de Pesos</div>
-                <button onClick={()=>setShowPesoCalc(false)} style={{background:"transparent",border:"none",color:T.muted,cursor:"pointer"}}><X size={20}/></button>
-              </div>
-              <PesoCalculadora T={T}/>
-            </div>
-          </div>
-        </div>
-      )}
+// ── PesoCalculadoraPage: wrapper de página completa (não é mais pop-up) ──
+function PesoCalculadoraPage({T,onBack}) {
+  return (
+    <div>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13,marginBottom:18}}>← Voltar para Biblioteca</button>
+      <PesoCalculadora T={T}/>
     </div>
   );
 }
@@ -3475,7 +3470,7 @@ export default function App() {
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon},{id:"auditoria",label:"Log de Auditoria",icon:Shield}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -3595,7 +3590,8 @@ export default function App() {
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
           {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser} newEntrySignal={newEntrySignal}/>}
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey} currentUser={currentUser}/>}
-          {page==="biblioteca"&&<BibliotecaPage  T={T}/>}
+          {page==="biblioteca"&&<BibliotecaPage  T={T} onNavigate={setPage}/>}
+          {page==="calc-pesos"&&<PesoCalculadoraPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
           {page==="auditoria"&&isAdmin(currentUser)&&<AuditLogPage T={T}/>}
         </div>
