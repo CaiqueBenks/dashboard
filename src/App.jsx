@@ -1909,13 +1909,13 @@ function HomePage({T,onNavigate}) {
     if(ia===-1&&ib===-1)return 0; if(ia===-1)return 1; if(ib===-1)return -1;
     return ia-ib;
   });
-  const reorderCards=(fromLabel,toLabel)=>{
+  const reorderCards=async(fromLabel,toLabel)=>{
     if(fromLabel===toLabel)return;
     const labels=summaryCards.map(c=>c.label);
     const from=labels.indexOf(fromLabel),to=labels.indexOf(toLabel);
     const next=[...labels]; next.splice(from,1); next.splice(to,0,fromLabel);
     setCardOrder(next);
-    window.storage.set("home_card_order",JSON.stringify(next)).catch(()=>{});
+    try{await window.storage.set("home_card_order",JSON.stringify(next));}catch(_){}
   };
   const quickLinks=[
     {id:"diario",    label:"Fechamento Diário", emoji:"📊",  color:"#3b82f6", desc:"Lançar KPIs e fechar o mês"},
@@ -2705,7 +2705,9 @@ function PesoCalculadora({T}) {
     })();
   },[]);
   useEffect(()=>{
-    window.storage.set("peso_calc_prefs",JSON.stringify({geoId,liga})).catch(()=>{});
+    (async()=>{
+      try{await window.storage.set("peso_calc_prefs",JSON.stringify({geoId,liga}));}catch(_){}
+    })();
     setVals({});
   },[geoId]);
   useEffect(()=>{ setDensOverride(null); },[liga]);
