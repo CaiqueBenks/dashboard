@@ -170,6 +170,67 @@ const THEMES = {
 const MATERIAIS = ["Tubo","Barra","Vergalhão","Arame","Chapa","Laminado","Conexão","Diversos"];
 
 // ── Calculadora de Pesos: densidades de referência (g/cm³) e geometrias ──
+// ── Conversor de Unidades: fatores em relação à unidade-base de cada categoria ──
+const CONVERSAO_CATEGORIAS = {
+  peso: {label:"Peso", emoji:"⚖️", unidades:[
+    {key:"g",  label:"Grama (g)",         factor:0.001},
+    {key:"kg", label:"Quilograma (kg)",   factor:1},
+    {key:"ton",label:"Tonelada (t)",      factor:1000},
+    {key:"lb", label:"Libra (lb)",        factor:0.45359237},
+  ]},
+  comprimento: {label:"Comprimento", emoji:"📏", unidades:[
+    {key:"mm", label:"Milímetro (mm)",    factor:1},
+    {key:"cm", label:"Centímetro (cm)",   factor:10},
+    {key:"m",  label:"Metro (m)",         factor:1000},
+    {key:"pol",label:"Polegada (\")",      factor:25.4},
+    {key:"pe", label:"Pé (ft)",           factor:304.8},
+  ]},
+};
+const fmtConv=(n)=>{
+  if(n==null||isNaN(n))return "";
+  const opts=Math.abs(n)>=1000?{maximumFractionDigits:2}:{maximumFractionDigits:6};
+  return new Intl.NumberFormat("pt-BR",opts).format(n);
+};
+
+// ── Conversor de Dureza ──
+// Grupo "exato" (kgf/mm², HB, HV, MPa): matematicamente equivalentes/proporcionais, válido pra qualquer material.
+// Grupo "Rockwell" (HRC, HRB, HR30T): tabela de referência ASTM E140 para aço-carbono/liga — aproximado, não linear,
+// e não necessariamente preciso para cobre, latão, alumínio ou bronze (ligas não-ferrosas divergem da curva do aço).
+const DUREZA_ACO_TABLE = [
+  {hb:739,hv:832,hrc:65, hrb:null},
+  {hb:654,hv:697,hrc:60, hrb:null},
+  {hb:560,hv:595,hrc:55, hrb:null},
+  {hb:481,hv:513,hrc:50, hrb:null},
+  {hb:421,hv:446,hrc:45, hrb:null},
+  {hb:371,hv:392,hrc:40, hrb:null},
+  {hb:327,hv:345,hrc:35, hrb:null},
+  {hb:286,hv:301,hrc:30, hrb:null},
+  {hb:253,hv:266,hrc:25, hrb:100},
+  {hb:226,hv:238,hrc:20, hrb:96},
+  {hb:197,hv:207,hrc:null,hrb:90},
+  {hb:150,hv:157,hrc:null,hrb:80},
+  {hb:126,hv:132,hrc:null,hrb:70},
+  {hb:106,hv:111,hrc:null,hrb:60},
+];
+// HRB ↔ HR30T (aço): equação ASTM E140 Apêndice X2 — HRB = -24,2568 + 1,49484 × HR30T
+const hrbToHr30t=(hrb)=>hrb==null?null:(hrb+24.2568)/1.49484;
+const hr30tToHrb=(t)=>t==null?null:1.49484*t-24.2568;
+// Interpolação linear entre os pontos mais próximos da tabela (sem extrapolar além do intervalo coberto)
+const interpDureza=(rows,xKey,yKey,xVal)=>{
+  const pts=rows.map(r=>({x:r[xKey],y:r[yKey]})).filter(p=>p.x!=null&&p.y!=null).sort((a,b)=>a.x-b.x);
+  if(pts.length===0||xVal==null)return null;
+  if(xVal<=pts[0].x)return pts[0].y;
+  if(xVal>=pts[pts.length-1].x)return pts[pts.length-1].y;
+  for(let i=0;i<pts.length-1;i++){
+    if(xVal>=pts[i].x&&xVal<=pts[i+1].x){
+      const t=(xVal-pts[i].x)/(pts[i+1].x-pts[i].x);
+      return pts[i].y+t*(pts[i+1].y-pts[i].y);
+    }
+  }
+  return null;
+};
+const fmtDureza=(n)=>n==null?"":new Intl.NumberFormat("pt-BR",{maximumFractionDigits:1}).format(n);
+
 const LIGA_DENSIDADES = {
   "Cobre":        8.96,
   "Latão":        8.50,
@@ -177,6 +238,68 @@ const LIGA_DENSIDADES = {
   "Aço Inox":     7.90,
   "Aço Carbono":  7.85,
   "Bronze":       8.80,
+};
+
+// ── Tabela de Ligas — composição química de referência ──
+// Fontes: Copper Development Association (UNS/CDA), Aluminum Association, SAE/AISI.
+// Seleção curada das ligas comerciais mais usadas por família — não é uma lista exaustiva de normas.
+const TABELA_LIGAS = {
+  cobre: {
+    label:"Cobre", emoji:"🟠", cor:"#c2703d",
+    ligas:[
+      {designacao:"UNS C11000 (ETP)", nome:"Cobre Eletrolítico Tenaz", composicao:"Cu ≥ 99,90%", densidade:8.94, aplicacoes:"Condutores elétricos, barramentos, cabos"},
+      {designacao:"UNS C10100 (OFE)", nome:"Cobre Isento de Oxigênio", composicao:"Cu ≥ 99,99%", densidade:8.94, aplicacoes:"Eletrônica de precisão, semicondutores, vácuo"},
+      {designacao:"UNS C12200 (DHP)", nome:"Cobre Fosforoso", composicao:"Cu ≥ 99,90% · P 0,015–0,040%", densidade:8.94, aplicacoes:"Tubos de refrigeração e ar-condicionado, hidráulica"},
+      {designacao:"UNS C14500", nome:"Cobre ao Telúrio", composicao:"Cu ≥ 99,90% · Te 0,40–0,70% · P 0,004–0,012%", densidade:8.94, aplicacoes:"Usinagem de alta velocidade, contatos elétricos"},
+    ],
+  },
+  latao: {
+    label:"Latão", emoji:"🟡", cor:"#c9a227",
+    ligas:[
+      {designacao:"UNS C26000", nome:"Latão Cartucho 70/30", composicao:"Cu 68,5–71,5% · Zn restante", densidade:8.53, aplicacoes:"Estampos profundos, cartuchos, radiadores"},
+      {designacao:"UNS C22000", nome:"Bronze Comercial 90/10", composicao:"Cu 89,0–91,0% · Zn restante", densidade:8.80, aplicacoes:"Joalheria, ferragens, medalhas (nome histórico — é tecnicamente um latão)"},
+      {designacao:"UNS C28000", nome:"Metal de Muntz 60/40", composicao:"Cu 59,0–63,0% · Zn restante", densidade:8.39, aplicacoes:"Estrutural naval, trocadores de calor, forjados"},
+      {designacao:"UNS C36000", nome:"Latão de Usinagem Rápida", composicao:"Cu 60,0–63,0% · Pb 2,5–3,7% · Zn restante", densidade:8.49, aplicacoes:"Peças usinadas (parafusos, conexões, engrenagens)"},
+      {designacao:"UNS C48500", nome:"Latão Naval Chumbado", composicao:"Cu 59,0–62,0% · Sn 0,50–1,0% · Pb 1,3–2,2% · Zn restante", densidade:8.41, aplicacoes:"Componentes navais e marítimos, hastes de válvula"},
+    ],
+  },
+  aluminio: {
+    label:"Alumínio", emoji:"⚪", cor:"#94a3b8",
+    ligas:[
+      {designacao:"AA 1100", nome:"Alumínio Comercialmente Puro", composicao:"Al ≥ 99,00% · Cu 0,05–0,20%", densidade:2.71, aplicacoes:"Chapas decorativas, refletores, trocadores de calor"},
+      {designacao:"AA 3003", nome:"Al-Manganês", composicao:"Al base · Mn 1,0–1,5% · Cu 0,05–0,20%", densidade:2.73, aplicacoes:"Utensílios, tanques, chapas de uso geral"},
+      {designacao:"AA 5052", nome:"Al-Magnésio", composicao:"Al base · Mg 2,2–2,8% · Cr 0,15–0,35%", densidade:2.68, aplicacoes:"Ambientes marinhos, tanques de combustível, painéis"},
+      {designacao:"AA 6061", nome:"Al-Magnésio-Silício", composicao:"Al base · Mg 0,8–1,2% · Si 0,4–0,8% · Cu 0,15–0,40% · Cr 0,04–0,35%", densidade:2.70, aplicacoes:"Estrutural, náutica, uso geral tratável termicamente"},
+      {designacao:"AA 6063", nome:"Al-Magnésio-Silício (Extrusão)", composicao:"Al base · Mg 0,45–0,90% · Si 0,20–0,60%", densidade:2.69, aplicacoes:"Perfis extrudados, esquadrias, arquitetura"},
+      {designacao:"AA 7075", nome:"Al-Zinco (Alta Resistência)", composicao:"Al base · Zn 5,6–6,1% · Mg 2,1–2,5% · Cu 1,2–1,6%", densidade:2.81, aplicacoes:"Aeronáutica, peças estruturais de alta resistência"},
+    ],
+  },
+  acoInox: {
+    label:"Aço Inox", emoji:"🔘", cor:"#64748b",
+    ligas:[
+      {designacao:"AISI 304", nome:"Inox Austenítico 18-8", composicao:"Cr 18,0–20,0% · Ni 8,0–10,5% · C ≤ 0,08%", densidade:8.00, aplicacoes:"Uso geral, alimentício, arquitetônico"},
+      {designacao:"AISI 316", nome:"Inox Austenítico c/ Molibdênio", composicao:"Cr 16,0–18,0% · Ni 10,0–14,0% · Mo 2,0–3,0% · C ≤ 0,08%", densidade:8.00, aplicacoes:"Ambientes marítimos, químico, farmacêutico"},
+      {designacao:"AISI 430", nome:"Inox Ferrítico", composicao:"Cr 16,0–18,0% · Ni ≤ 0,75% · C ≤ 0,12%", densidade:7.70, aplicacoes:"Eletrodomésticos, decoração, automotivo (não estrutural)"},
+      {designacao:"AISI 410", nome:"Inox Martensítico", composicao:"Cr 11,5–13,5% · C ≤ 0,15%", densidade:7.75, aplicacoes:"Cutelaria, componentes temperáveis, válvulas"},
+    ],
+  },
+  acoCarbono: {
+    label:"Aço Carbono", emoji:"⚫", cor:"#334155",
+    ligas:[
+      {designacao:"SAE 1018", nome:"Aço Baixo Carbono", composicao:"C 0,15–0,20% · Mn 0,60–0,90%", densidade:7.87, aplicacoes:"Peças usinadas de uso geral, boa soldabilidade"},
+      {designacao:"SAE 1020", nome:"Aço Baixo Carbono", composicao:"C 0,17–0,23% · Mn 0,30–0,60%", densidade:7.87, aplicacoes:"Eixos, parafusos, peças estruturais leves"},
+      {designacao:"ASTM A36", nome:"Aço Estrutural", composicao:"C ≤ 0,25–0,29% · Mn ≈ 1,00%", densidade:7.85, aplicacoes:"Construção civil, estruturas metálicas, chapas"},
+      {designacao:"SAE 1045", nome:"Aço Médio Carbono", composicao:"C 0,43–0,50% · Mn 0,60–0,90%", densidade:7.85, aplicacoes:"Eixos, engrenagens, componentes de maior resistência"},
+    ],
+  },
+  bronze: {
+    label:"Bronze", emoji:"🟤", cor:"#a16207",
+    ligas:[
+      {designacao:"UNS C51000", nome:"Bronze Fosforoso 5%", composicao:"Cu base · Sn 4,2–5,8% · P 0,03–0,35%", densidade:8.86, aplicacoes:"Molas, contatos elétricos, buchas"},
+      {designacao:"UNS C93200 (SAE 660)", nome:"Bronze de Mancal (Chumbado)", composicao:"Cu ≈ 83% · Sn ≈ 7% · Pb ≈ 7% · Zn ≈ 3%", densidade:8.93, aplicacoes:"Mancais, buchas de deslizamento, bronzinas"},
+      {designacao:"UNS C95400", nome:"Bronze de Alumínio", composicao:"Cu base · Al 10,0–11,5% · Fe 3,0–5,0%", densidade:7.45, aplicacoes:"Alta resistência mecânica, engrenagens, hélices navais"},
+    ],
+  },
 };
 const GEOMETRIAS = [
   {id:"tubo_redondo",    label:"Tubo Redondo",      emoji:"⭕", fields:[{k:"od",label:"Diâmetro Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
@@ -2828,6 +2951,206 @@ function PesoCalculadora({T}) {
   );
 }
 
+// ── ConversorUnidades: conversão em tempo real, todos os campos editáveis ──
+function ConversorUnidades({T}) {
+  const [categoria,setCategoria]=useState("peso");
+  const [fromUnit, setFromUnit] =useState(Object.values(CONVERSAO_CATEGORIAS)[0].unidades[1]?.key||CONVERSAO_CATEGORIAS.peso.unidades[1].key);
+  const [valor,    setValor]    =useState("1");
+  const [durUnit,  setDurUnit]  =useState("hb");
+  const [durValor, setDurValor] =useState("200");
+
+  const cat=CONVERSAO_CATEGORIAS[categoria];
+  const changeCategoria=(c)=>{
+    setCategoria(c);
+    if(c!=="dureza")setFromUnit(CONVERSAO_CATEGORIAS[c].unidades[1]?.key||CONVERSAO_CATEGORIAS[c].unidades[0].key);
+    setValor("1");
+  };
+
+  const fromDef=cat?.unidades.find(u=>u.key===fromUnit);
+  const baseValue=(()=>{ const n=parseNum(valor); return n==null||!fromDef?null:n*fromDef.factor; })();
+
+  // ── Dureza: kgf/mm²=HB=HV (exato/proporcional) + MPa (exato) + HRC/HRB/HR30T (tabela de referência p/ aço) ──
+  const dVal=parseNum(durValor);
+  let baseHB=null;
+  if(dVal!=null){
+    if(durUnit==="kgfmm2"||durUnit==="hb")baseHB=dVal;
+    else if(durUnit==="mpa")baseHB=dVal/9.80665;
+    else if(durUnit==="hv")baseHB=interpDureza(DUREZA_ACO_TABLE,"hv","hb",dVal)??dVal;
+    else if(durUnit==="hrc")baseHB=interpDureza(DUREZA_ACO_TABLE,"hrc","hb",dVal);
+    else if(durUnit==="hrb")baseHB=interpDureza(DUREZA_ACO_TABLE,"hrb","hb",dVal);
+    else if(durUnit==="hr30t")baseHB=interpDureza(DUREZA_ACO_TABLE,"hrb","hb",hr30tToHrb(dVal));
+  }
+  const dHV=baseHB!=null?(interpDureza(DUREZA_ACO_TABLE,"hb","hv",baseHB)??baseHB):null;
+  const dHRC=baseHB!=null?interpDureza(DUREZA_ACO_TABLE,"hb","hrc",baseHB):null;
+  const dHRB=baseHB!=null?interpDureza(DUREZA_ACO_TABLE,"hb","hrb",baseHB):null;
+  const dHR30T=hrbToHr30t(dHRB);
+  const dMPA=baseHB!=null?baseHB*9.80665:null;
+  const durezaRows=[
+    {key:"kgfmm2",label:"kgf/mm²",             val:baseHB, group:"exato"},
+    {key:"hb",    label:"HB (Brinell)",        val:baseHB, group:"exato"},
+    {key:"hv",    label:"HV (Vickers)",        val:dHV,    group:"exato"},
+    {key:"mpa",   label:"MPa",                 val:dMPA,   group:"exato"},
+    {key:"hrc",   label:"HRC (Rockwell C)",    val:dHRC,   group:"steel"},
+    {key:"hrb",   label:"HRB (Rockwell B)",    val:dHRB,   group:"steel"},
+    {key:"hr30t", label:"HR30T (Superficial)", val:dHR30T, group:"steel"},
+  ];
+
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const iSt={width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",color:T.text,fontSize:16,fontWeight:600,boxSizing:"border-box",outline:"none"};
+
+  const TABS=[...Object.entries(CONVERSAO_CATEGORIAS),["dureza",{label:"Dureza",emoji:"🔨"}]];
+
+  return (
+    <div style={{...cSt,borderTop:"3px solid #3b82f6"}}>
+      <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>🔄 Conversor de Unidades</div>
+      <div style={{fontSize:12,color:T.muted,marginBottom:18}}>Digite um valor em qualquer campo — os demais convertem automaticamente.</div>
+
+      <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>
+        {TABS.map(([key,c])=>(
+          <button key={key} onClick={()=>changeCategoria(key)} style={{
+            display:"flex",alignItems:"center",gap:6,padding:"8px 16px",borderRadius:8,cursor:"pointer",
+            background:categoria===key?"#3b82f620":T.card2,color:categoria===key?"#3b82f6":T.sub,
+            border:`1.5px solid ${categoria===key?"#3b82f6":T.border}`,fontSize:13,fontWeight:categoria===key?600:400,
+          }}>
+            <span style={{fontSize:15}}>{c.emoji}</span>{c.label}
+          </button>
+        ))}
+      </div>
+
+      {categoria==="dureza"?(
+        <>
+          <div style={{background:"#f59e0b15",border:"1px solid #f59e0b40",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:11.5,color:T.sub,lineHeight:1.5}}>
+            <strong style={{color:"#f59e0b"}}>⚠️ kgf/mm², HB, HV e MPa</strong> são conversões exatas, válidas pra qualquer material.
+            Já <strong style={{color:"#f59e0b"}}>HRC, HRB e HR30T</strong> usam uma tabela de referência calibrada pra <strong>aço-carbono/liga</strong> — pra cobre, latão, alumínio e bronze o valor real pode divergir.
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {durezaRows.map((r,i)=>{
+              const isFrom=r.key===durUnit;
+              const displayVal=isFrom?durValor:fmtDureza(r.val);
+              const prevGroup=i>0?durezaRows[i-1].group:r.group;
+              return (
+                <div key={r.key}>
+                  {r.group!==prevGroup&&<div style={{borderTop:`1px dashed ${T.border}`,margin:"6px 0 10px"}}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <div style={{width:170,flexShrink:0,fontSize:13,color:isFrom?"#3b82f6":T.muted,fontWeight:isFrom?700:500}}>{r.label}</div>
+                    <input
+                      value={displayVal}
+                      onChange={e=>{setDurUnit(r.key);setDurValor(e.target.value);}}
+                      onFocus={()=>{if(!isFrom){setDurUnit(r.key);setDurValor(displayVal.replace(/\./g,"").replace(",","."));}}}
+                      placeholder="0"
+                      style={{...iSt,borderColor:isFrom?"#3b82f6":T.border,background:isFrom?T.inputBg:T.card2}}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {cat.unidades.map(u=>{
+            const isFrom=u.key===fromUnit;
+            const displayVal=isFrom?valor:(baseValue!=null?fmtConv(baseValue/u.factor):"");
+            return (
+              <div key={u.key} style={{display:"flex",alignItems:"center",gap:12,padding:"4px 0"}}>
+                <div style={{width:150,flexShrink:0,fontSize:13,color:isFrom?"#3b82f6":T.muted,fontWeight:isFrom?700:500}}>{u.label}</div>
+                <input
+                  value={displayVal}
+                  onChange={e=>{setFromUnit(u.key);setValor(e.target.value);}}
+                  onFocus={()=>{if(!isFrom){setFromUnit(u.key);setValor(displayVal.replace(/\./g,"").replace(",","."));}}}
+                  placeholder="0"
+                  style={{...iSt,borderColor:isFrom?"#3b82f6":T.border,background:isFrom?T.inputBg:T.card2}}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ConversorPage: wrapper de página completa ──
+function ConversorPage({T,onBack}) {
+  return (
+    <div>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13,marginBottom:18}}>← Voltar para Biblioteca</button>
+      <ConversorUnidades T={T}/>
+    </div>
+  );
+}
+
+// ── TabelaLigasPage: composição química por família de material, com busca ──
+function TabelaLigasPage({T,onBack}) {
+  const familias=Object.entries(TABELA_LIGAS);
+  const [fam,setFam]=useState(familias[0][0]);
+  const [busca,setBusca]=useState("");
+
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const dados=TABELA_LIGAS[fam];
+  const filtradas=dados.ligas.filter(l=>{
+    const q=busca.trim().toLowerCase();
+    if(!q)return true;
+    return l.designacao.toLowerCase().includes(q)||l.nome.toLowerCase().includes(q)||l.composicao.toLowerCase().includes(q);
+  });
+
+  return (
+    <div>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13,marginBottom:18}}>← Voltar para Biblioteca</button>
+
+      <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
+        <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>🪙 Tabela de Ligas — Composição Química</div>
+        <div style={{fontSize:12,color:T.muted}}>
+          Seleção curada de ligas comerciais mais usadas, com dados de referência (CDA/UNS, Aluminum Association, SAE/AISI). Não é uma lista exaustiva de todas as normas existentes.
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {familias.map(([key,f])=>(
+          <button key={key} onClick={()=>{setFam(key);setBusca("");}} style={{
+            display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,cursor:"pointer",
+            background:fam===key?f.cor+"20":T.card2,color:fam===key?f.cor:T.sub,
+            border:`1.5px solid ${fam===key?f.cor:T.border}`,fontSize:13,fontWeight:fam===key?600:400,
+          }}>
+            <span style={{fontSize:15}}>{f.emoji}</span>{f.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{...cSt,marginBottom:16,borderTop:`3px solid ${dados.cor}`}}>
+        <input value={busca} onChange={e=>setBusca(e.target.value)} placeholder={`Buscar em ${dados.label}... (designação, nome ou elemento)`}
+          style={{width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",color:T.text,fontSize:14,boxSizing:"border-box",outline:"none",marginBottom:16}}/>
+
+        {filtradas.length===0?(
+          <div style={{textAlign:"center",padding:30,color:T.faint,fontSize:13}}>Nenhuma liga encontrada para "{busca}".</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {filtradas.map(l=>(
+              <div key={l.designacao} style={{background:T.card2,border:`1px solid ${T.border}`,borderRadius:10,padding:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8,marginBottom:8}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:T.text}}>{l.designacao}</div>
+                    <div style={{fontSize:12.5,color:dados.cor,fontWeight:600}}>{l.nome}</div>
+                  </div>
+                  <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 10px",fontSize:12,color:T.sub,whiteSpace:"nowrap"}}>
+                    ρ ≈ {l.densidade.toFixed(2)} g/cm³
+                  </div>
+                </div>
+                <div style={{fontSize:12.5,color:T.sub,marginBottom:6,fontFamily:"monospace"}}>{l.composicao}</div>
+                <div style={{fontSize:11.5,color:T.faint}}><strong style={{color:T.muted}}>Aplicações:</strong> {l.aplicacoes}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{fontSize:11,color:T.faint,textAlign:"center"}}>
+        Valores de composição em % de massa, faixas típicas de norma. Densidades são valores de referência — podem variar conforme têmpera e fornecedor.
+      </div>
+    </div>
+  );
+}
+
 function BibliotecaPage({T,onNavigate}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const modules=[
@@ -2835,8 +3158,8 @@ function BibliotecaPage({T,onNavigate}) {
     {id:"barras", emoji:"📏", label:"Tabela de Barras",          desc:"Medidas padronizadas de barras chatas, redondas, quadradas e sextavadas.", ready:false},
     {id:"tubos",  emoji:"🔩", label:"Tabela de Tubos",           desc:"Dimensões e espessuras de tubos estruturais e industriais.", ready:false},
     {id:"lam",    emoji:"📐", label:"Tabela de Laminados",       desc:"Perfis U, I, L e T com dimensões e pesos por metro.", ready:false},
-    {id:"ligas",  emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição e propriedades das principais ligas de cobre, latão e alumínio.", ready:false},
-    {id:"conv",   emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns.", ready:false},
+    {id:"ligas",  emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição química das principais ligas de cobre, latão, alumínio, aço e bronze.", ready:true},
+    {id:"conv",   emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns.", ready:true},
   ];
   return (
     <div>
@@ -2853,7 +3176,7 @@ function BibliotecaPage({T,onNavigate}) {
       </div>
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
         {modules.map(({id,emoji,label,desc,ready})=>(
-          <div key={label} onClick={()=>ready&&id==="peso"&&onNavigate&&onNavigate("calc-pesos")}
+          <div key={label} onClick={()=>{if(!ready||!onNavigate)return;if(id==="peso")onNavigate("calc-pesos");if(id==="conv")onNavigate("calc-unidades");if(id==="ligas")onNavigate("tabela-ligas");}}
             className={ready?"dg-lift":""}
             style={{...cSt,opacity:ready?1:.65,cursor:ready?"pointer":"default",borderLeft:`3px solid ${ready?"#3b82f6":T.border}`}}>
             <div style={{fontSize:26,marginBottom:10}}>{emoji}</div>
@@ -3472,7 +3795,7 @@ export default function App() {
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon},{id:"auditoria",label:"Log de Auditoria",icon:Shield}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -3594,6 +3917,8 @@ export default function App() {
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey} currentUser={currentUser}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T} onNavigate={setPage}/>}
           {page==="calc-pesos"&&<PesoCalculadoraPage T={T} onBack={()=>setPage("biblioteca")}/>}
+          {page==="calc-unidades"&&<ConversorPage T={T} onBack={()=>setPage("biblioteca")}/>}
+          {page==="tabela-ligas"&&<TabelaLigasPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
           {page==="auditoria"&&isAdmin(currentUser)&&<AuditLogPage T={T}/>}
         </div>
