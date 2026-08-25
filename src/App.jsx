@@ -301,6 +301,22 @@ const TABELA_LIGAS = {
     ],
   },
 };
+
+// ── Bitolas Comerciais Padrão (mercado brasileiro, aço-carbono como referência) ──
+// Fontes: tabela de bolso Gerdau (barras trefiladas/laminadas NBR 8580), mercado de metalon (tubos quadrados/retangulares),
+// fabricantes de tubo redondo mecânico. O peso por metro é CALCULADO ao vivo (mesma fórmula da Calculadora de Pesos),
+// não é um valor digitado — assim qualquer erro de dimensão fica visível e a matemática já foi validada antes.
+const BITOLAS_PADRAO = {
+  barra_redonda:    { label:"Barra Redonda",    unidade:"Ø (mm)",  valores:[6,8,10,12,12.7,16,19,20,22,25,25.4,28,30,32,35,38.1,40,45,50,63.5,75,80,100] },
+  barra_quadrada:   { label:"Barra Quadrada",   unidade:"Lado (mm)", valores:[6,8,10,12,14,16,19,20,22,25,28,30,32,35,38,40,45,50,63,75,80,100] },
+  barra_sextavada:  { label:"Barra Sextavada",  unidade:"Chave/Distância entre faces (mm)", valores:[8,10,11,12,13,14,17,19,21,22,24,27,30,32,36,41,46,50] },
+  barra_chata:      { label:"Barra Chata",      unidade:"Largura × Espessura (mm)", pares:[[20,3],[20,5],[25,3],[25,5],[32,3],[32,5],[38,5],[40,5],[50,5],[50,8],[63,5],[63,8],[75,8],[75,10],[100,8],[100,10]] },
+  tubo_redondo:     { label:"Tubo Redondo",     unidade:"OD (mm)", parede:[1.2,1.5,2.0,2.65,3.0], valores:[12.7,15.9,19.1,21.3,25.4,31.8,38.1,42.4,48.3,50.8,60.3,63.5,73.0,76.2,88.9,101.6] },
+  tubo_quadrado:    { label:"Tubo Quadrado (Metalon)", unidade:"Lado (mm)", parede:[0.9,1.2,1.5,2.0,3.0], valores:[20,25,30,40,50,60,80,100] },
+  tubo_retangular:  { label:"Tubo Retangular (Metalon)", unidade:"Lados (mm)", parede:[0.9,1.2,1.5,2.0,3.0], pares:[[20,10],[30,10],[30,20],[40,20],[40,30],[50,20],[50,30],[60,30],[60,40],[80,40],[100,50]] },
+  chapa:            { label:"Chapa / Fita",     unidade:"Espessura (mm)", valores:[0.30,0.40,0.50,0.60,0.75,0.80,0.90,1.06,1.20,1.50,1.90,2.25,2.65,3.00,3.75,4.75,6.30,8.00,9.50,12.50,16.00,19.00,25.40] },
+};
+
 const GEOMETRIAS = [
   {id:"tubo_redondo",    label:"Tubo Redondo",      emoji:"⭕", fields:[{k:"od",label:"Diâmetro Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
   {id:"tubo_quadrado",   label:"Tubo Quadrado",     emoji:"◻️", fields:[{k:"lado",label:"Lado Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
@@ -3151,13 +3167,131 @@ function TabelaLigasPage({T,onBack}) {
   );
 }
 
+// ── TabelaMedidasPage: bitolas comerciais (Barras, Tubos, Chapas), peso/m calculado ao vivo ──
+function TabelaMedidasPage({T,onBack}) {
+  const ABAS=[
+    {key:"barras", label:"Barras",         emoji:"📏", cor:"#3b82f6", subs:["barra_redonda","barra_quadrada","barra_sextavada","barra_chata"]},
+    {key:"tubos",  label:"Tubos",           emoji:"🔩", cor:"#06b6d4", subs:["tubo_redondo","tubo_quadrado","tubo_retangular"]},
+    {key:"chapas", label:"Chapas / Fitas",  emoji:"▯",  cor:"#8b5cf6", subs:["chapa"]},
+  ];
+  const [aba,setAba]=useState("barras");
+  const [sub,setSub]=useState("barra_redonda");
+  const [liga,setLiga]=useState("Aço Carbono");
+  const [parede,setParede]=useState(null);
+
+  const changeAba=(a)=>{setAba(a);const first=ABAS.find(x=>x.key===a).subs[0];setSub(first);setParede(BITOLAS_PADRAO[first].parede?BITOLAS_PADRAO[first].parede[0]:null);};
+  const changeSub=(s)=>{setSub(s);setParede(BITOLAS_PADRAO[s].parede?BITOLAS_PADRAO[s].parede[0]:null);};
+
+  const dados=BITOLAS_PADRAO[sub];
+  const densidade=LIGA_DENSIDADES[liga];
+  const abaAtual=ABAS.find(a=>a.key===aba);
+
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const SUB_LABELS={barra_redonda:"Redonda",barra_quadrada:"Quadrada",barra_sextavada:"Sextavada",barra_chata:"Chata",tubo_redondo:"Redondo",tubo_quadrado:"Quadrado",tubo_retangular:"Retangular",chapa:"Chapa/Fita"};
+
+  // Calcula peso/m (ou peso/m² para chapa) usando as mesmas fórmulas da Calculadora de Pesos
+  const pesoPorMetro=(valOrPar)=>{
+    let area=null;
+    if(sub==="barra_redonda")     area=calcAreaSecao("barra_redonda",{d:valOrPar});
+    else if(sub==="barra_quadrada") area=calcAreaSecao("barra_quadrada",{lado:valOrPar});
+    else if(sub==="barra_sextavada")area=calcAreaSecao("barra_sextavada",{faces:valOrPar});
+    else if(sub==="barra_chata")  area=calcAreaSecao("chapa_fita",{largura:valOrPar[0],esp:valOrPar[1]});
+    else if(sub==="tubo_redondo") area=calcAreaSecao("tubo_redondo",{od:valOrPar,esp:parede});
+    else if(sub==="tubo_quadrado")area=calcAreaSecao("tubo_quadrado",{lado:valOrPar,esp:parede});
+    else if(sub==="tubo_retangular")area=calcAreaSecao("tubo_retangular",{largura:valOrPar[0],altura:valOrPar[1],esp:parede});
+    else if(sub==="chapa")        area=calcAreaSecao("chapa_fita",{largura:1000,esp:valOrPar}); // kg/m² (largura=1m)
+    if(area==null)return null;
+    return (area*1000*densidade)/1_000_000;
+  };
+
+  const linhas=(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
+
+  return (
+    <div>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13,marginBottom:18}}>← Voltar para Biblioteca</button>
+
+      <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
+        <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>📐 Tabela de Medidas Padronizadas</div>
+        <div style={{fontSize:12,color:T.muted}}>
+          Bitolas comerciais mais usadas no mercado brasileiro (referência Gerdau/NBR 8580 e mercado de metalon). O peso por metro é <strong style={{color:T.text}}>calculado ao vivo</strong> com a mesma fórmula da Calculadora de Pesos — não é um valor de catálogo digitado, então qualquer material pode ser conferido.
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+        {ABAS.map(a=>(
+          <button key={a.key} onClick={()=>changeAba(a.key)} style={{
+            display:"flex",alignItems:"center",gap:6,padding:"8px 16px",borderRadius:8,cursor:"pointer",
+            background:aba===a.key?a.cor+"20":T.card2,color:aba===a.key?a.cor:T.sub,
+            border:`1.5px solid ${aba===a.key?a.cor:T.border}`,fontSize:13,fontWeight:aba===a.key?600:400,
+          }}>
+            <span style={{fontSize:15}}>{a.emoji}</span>{a.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:6,marginBottom:16,flexWrap:"wrap"}}>
+        {abaAtual.subs.map(s=>(
+          <button key={s} onClick={()=>changeSub(s)} style={{
+            padding:"6px 12px",borderRadius:20,cursor:"pointer",fontSize:12.5,fontWeight:sub===s?600:400,
+            background:sub===s?abaAtual.cor+"20":"transparent",color:sub===s?abaAtual.cor:T.faint,
+            border:`1px solid ${sub===s?abaAtual.cor:T.border}`,
+          }}>{SUB_LABELS[s]}</button>
+        ))}
+      </div>
+
+      <div style={{...cSt,borderTop:`3px solid ${abaAtual.cor}`}}>
+        <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <div style={{minWidth:180}}>
+            <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Material (densidade)</label>
+            <select value={liga} onChange={e=>setLiga(e.target.value)} style={{width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px",color:T.text,fontSize:13.5}}>
+              {Object.keys(LIGA_DENSIDADES).map(l=><option key={l} value={l}>{l} ({LIGA_DENSIDADES[l].toFixed(2)} g/cm³)</option>)}
+            </select>
+          </div>
+          {dados.parede&&(
+            <div>
+              <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Espessura de Parede (mm)</label>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {dados.parede.map(p=>(
+                  <button key={p} onClick={()=>setParede(p)} style={{
+                    padding:"7px 12px",borderRadius:6,cursor:"pointer",fontSize:12.5,fontWeight:parede===p?600:400,
+                    background:parede===p?abaAtual.cor+"20":T.card2,color:parede===p?abaAtual.cor:T.sub,
+                    border:`1px solid ${parede===p?abaAtual.cor:T.border}`,
+                  }}>{p.toFixed(2).replace(".",",")}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
+            <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
+              <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{dados.unidade}</th>
+              <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{sub==="chapa"?"Peso (kg/m²)":"Peso Nominal (kg/m)"}</th>
+            </tr></thead>
+            <tbody>{linhas.map(l=>(
+              <tr key={l.key} style={{borderBottom:`1px solid ${T.border}50`}}>
+                <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{Array.isArray(l.val)?l.val.join(" × "):new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(l.val)}</td>
+                <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:600}}>{l.peso!=null?fmtKg(l.peso):"—"}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{fontSize:11,color:T.faint,textAlign:"center",marginTop:12}}>
+        Lista de bitolas mais comuns — não é exaustiva de todas as variações de fornecedor. Tolerância de massa padrão da indústria: ±10% a ±12,5%.
+      </div>
+    </div>
+  );
+}
+
 function BibliotecaPage({T,onNavigate}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const modules=[
     {id:"peso",   emoji:"⚖️", label:"Calculadora de Pesos",    desc:"Calcule o peso de barras, tubos e perfis a partir das dimensões e do material.", ready:true},
-    {id:"barras", emoji:"📏", label:"Tabela de Barras",          desc:"Medidas padronizadas de barras chatas, redondas, quadradas e sextavadas.", ready:false},
-    {id:"tubos",  emoji:"🔩", label:"Tabela de Tubos",           desc:"Dimensões e espessuras de tubos estruturais e industriais.", ready:false},
-    {id:"lam",    emoji:"📐", label:"Tabela de Laminados",       desc:"Perfis U, I, L e T com dimensões e pesos por metro.", ready:false},
+    {id:"medidas",emoji:"📐", label:"Tabela de Medidas Padronizadas", desc:"Bitolas comerciais de barras, tubos e chapas, com peso por metro calculado.", ready:true},
+    {id:"lam",    emoji:"📊", label:"Tabela de Laminados",       desc:"Perfis U, I, L e T com dimensões e pesos por metro.", ready:false},
     {id:"ligas",  emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição química das principais ligas de cobre, latão, alumínio, aço e bronze.", ready:true},
     {id:"conv",   emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns.", ready:true},
   ];
@@ -3176,7 +3310,7 @@ function BibliotecaPage({T,onNavigate}) {
       </div>
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
         {modules.map(({id,emoji,label,desc,ready})=>(
-          <div key={label} onClick={()=>{if(!ready||!onNavigate)return;if(id==="peso")onNavigate("calc-pesos");if(id==="conv")onNavigate("calc-unidades");if(id==="ligas")onNavigate("tabela-ligas");}}
+          <div key={label} onClick={()=>{if(!ready||!onNavigate)return;if(id==="peso")onNavigate("calc-pesos");if(id==="conv")onNavigate("calc-unidades");if(id==="ligas")onNavigate("tabela-ligas");if(id==="medidas")onNavigate("tabela-medidas");}}
             className={ready?"dg-lift":""}
             style={{...cSt,opacity:ready?1:.65,cursor:ready?"pointer":"default",borderLeft:`3px solid ${ready?"#3b82f6":T.border}`}}>
             <div style={{fontSize:26,marginBottom:10}}>{emoji}</div>
@@ -3795,7 +3929,7 @@ export default function App() {
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon},{id:"auditoria",label:"Log de Auditoria",icon:Shield}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas","tabela-medidas":"Tabela de Medidas Padronizadas"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -3919,6 +4053,7 @@ export default function App() {
           {page==="calc-pesos"&&<PesoCalculadoraPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="calc-unidades"&&<ConversorPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="tabela-ligas"&&<TabelaLigasPage T={T} onBack={()=>setPage("biblioteca")}/>}
+          {page==="tabela-medidas"&&<TabelaMedidasPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
           {page==="auditoria"&&isAdmin(currentUser)&&<AuditLogPage T={T}/>}
         </div>
