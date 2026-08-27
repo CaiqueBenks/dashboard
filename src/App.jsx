@@ -247,57 +247,57 @@ const TABELA_LIGAS = {
   cobre: {
     label:"Cobre", emoji:"🟠", cor:"#c2703d",
     ligas:[
-      {designacao:"UNS C11000 (ETP)", nome:"Cobre Eletrolítico Tenaz", composicao:"Cu ≥ 99,90%", densidade:8.94, aplicacoes:"Condutores elétricos, barramentos, cabos"},
-      {designacao:"UNS C10100 (OFE)", nome:"Cobre Isento de Oxigênio", composicao:"Cu ≥ 99,99%", densidade:8.94, aplicacoes:"Eletrônica de precisão, semicondutores, vácuo"},
-      {designacao:"UNS C12200 (DHP)", nome:"Cobre Fosforoso", composicao:"Cu ≥ 99,90% · P 0,015–0,040%", densidade:8.94, aplicacoes:"Tubos de refrigeração e ar-condicionado, hidráulica"},
-      {designacao:"UNS C14500", nome:"Cobre ao Telúrio", composicao:"Cu ≥ 99,90% · Te 0,40–0,70% · P 0,004–0,012%", densidade:8.94, aplicacoes:"Usinagem de alta velocidade, contatos elétricos"},
+      {designacao:"UNS C11000 (ETP)", nome:"Cobre Eletrolítico Tenaz", composicao:"Cu ≥ 99,90%", densidade:8.94, aplicacoes:"Condutores elétricos, barramentos, cabos", fusao:"1065–1085 °C", tratamento:"Recozimento: 375–650 °C"},
+      {designacao:"UNS C10100 (OFE)", nome:"Cobre Isento de Oxigênio", composicao:"Cu ≥ 99,99%", densidade:8.94, aplicacoes:"Eletrônica de precisão, semicondutores, vácuo", fusao:"1083–1085 °C", tratamento:"Recozimento: 375–650 °C"},
+      {designacao:"UNS C12200 (DHP)", nome:"Cobre Fosforoso", composicao:"Cu ≥ 99,90% · P 0,015–0,040%", densidade:8.94, aplicacoes:"Tubos de refrigeração e ar-condicionado, hidráulica", fusao:"1065–1083 °C", tratamento:"Recozimento: 375–650 °C"},
+      {designacao:"UNS C14500", nome:"Cobre ao Telúrio", composicao:"Cu ≥ 99,90% · Te 0,40–0,70% · P 0,004–0,012%", densidade:8.94, aplicacoes:"Usinagem de alta velocidade, contatos elétricos", fusao:"≈ 1080 °C", tratamento:"Recozimento: 375–650 °C"},
     ],
   },
   latao: {
     label:"Latão", emoji:"🟡", cor:"#c9a227",
     ligas:[
-      {designacao:"UNS C26000", nome:"Latão Cartucho 70/30", composicao:"Cu 68,5–71,5% · Zn restante", densidade:8.53, aplicacoes:"Estampos profundos, cartuchos, radiadores"},
-      {designacao:"UNS C22000", nome:"Bronze Comercial 90/10", composicao:"Cu 89,0–91,0% · Zn restante", densidade:8.80, aplicacoes:"Joalheria, ferragens, medalhas (nome histórico — é tecnicamente um latão)"},
-      {designacao:"UNS C28000", nome:"Metal de Muntz 60/40", composicao:"Cu 59,0–63,0% · Zn restante", densidade:8.39, aplicacoes:"Estrutural naval, trocadores de calor, forjados"},
-      {designacao:"UNS C36000", nome:"Latão de Usinagem Rápida", composicao:"Cu 60,0–63,0% · Pb 2,5–3,7% · Zn restante", densidade:8.49, aplicacoes:"Peças usinadas (parafusos, conexões, engrenagens)"},
-      {designacao:"UNS C48500", nome:"Latão Naval Chumbado", composicao:"Cu 59,0–62,0% · Sn 0,50–1,0% · Pb 1,3–2,2% · Zn restante", densidade:8.41, aplicacoes:"Componentes navais e marítimos, hastes de válvula"},
+      {designacao:"UNS C26000", nome:"Latão Cartucho 70/30", composicao:"Cu 68,5–71,5% · Zn restante", densidade:8.53, aplicacoes:"Estampos profundos, cartuchos, radiadores", fusao:"915–955 °C", tratamento:"Recozimento: 425–750 °C"},
+      {designacao:"UNS C22000", nome:"Bronze Comercial 90/10", composicao:"Cu 89,0–91,0% · Zn restante", densidade:8.80, aplicacoes:"Joalheria, ferragens, medalhas (nome histórico — é tecnicamente um latão)", fusao:"1020–1050 °C", tratamento:"Recozimento: 375–650 °C"},
+      {designacao:"UNS C28000", nome:"Metal de Muntz 60/40", composicao:"Cu 59,0–63,0% · Zn restante", densidade:8.39, aplicacoes:"Estrutural naval, trocadores de calor, forjados", fusao:"880–920 °C", tratamento:"Recozimento: 425–600 °C"},
+      {designacao:"UNS C36000", nome:"Latão de Usinagem Rápida", composicao:"Cu 60,0–63,0% · Pb 2,5–3,7% · Zn restante", densidade:8.49, aplicacoes:"Peças usinadas (parafusos, conexões, engrenagens)", fusao:"885–935 °C", tratamento:"Recozimento: 425–600 °C"},
+      {designacao:"UNS C48500", nome:"Latão Naval Chumbado", composicao:"Cu 59,0–62,0% · Sn 0,50–1,0% · Pb 1,3–2,2% · Zn restante", densidade:8.41, aplicacoes:"Componentes navais e marítimos, hastes de válvula", fusao:"900–930 °C", tratamento:"Recozimento: 425–600 °C"},
     ],
   },
   aluminio: {
     label:"Alumínio", emoji:"⚪", cor:"#94a3b8",
     ligas:[
-      {designacao:"AA 1100", nome:"Alumínio Comercialmente Puro", composicao:"Al ≥ 99,00% · Cu 0,05–0,20%", densidade:2.71, aplicacoes:"Chapas decorativas, refletores, trocadores de calor"},
-      {designacao:"AA 3003", nome:"Al-Manganês", composicao:"Al base · Mn 1,0–1,5% · Cu 0,05–0,20%", densidade:2.73, aplicacoes:"Utensílios, tanques, chapas de uso geral"},
-      {designacao:"AA 5052", nome:"Al-Magnésio", composicao:"Al base · Mg 2,2–2,8% · Cr 0,15–0,35%", densidade:2.68, aplicacoes:"Ambientes marinhos, tanques de combustível, painéis"},
-      {designacao:"AA 6061", nome:"Al-Magnésio-Silício", composicao:"Al base · Mg 0,8–1,2% · Si 0,4–0,8% · Cu 0,15–0,40% · Cr 0,04–0,35%", densidade:2.70, aplicacoes:"Estrutural, náutica, uso geral tratável termicamente"},
-      {designacao:"AA 6063", nome:"Al-Magnésio-Silício (Extrusão)", composicao:"Al base · Mg 0,45–0,90% · Si 0,20–0,60%", densidade:2.69, aplicacoes:"Perfis extrudados, esquadrias, arquitetura"},
-      {designacao:"AA 7075", nome:"Al-Zinco (Alta Resistência)", composicao:"Al base · Zn 5,6–6,1% · Mg 2,1–2,5% · Cu 1,2–1,6%", densidade:2.81, aplicacoes:"Aeronáutica, peças estruturais de alta resistência"},
+      {designacao:"AA 1100", nome:"Alumínio Comercialmente Puro", composicao:"Al ≥ 99,00% · Cu 0,05–0,20%", densidade:2.71, aplicacoes:"Chapas decorativas, refletores, trocadores de calor", fusao:"643–657 °C", tratamento:"Recozimento: ≈ 345 °C (não é tratável termicamente por precipitação)"},
+      {designacao:"AA 3003", nome:"Al-Manganês", composicao:"Al base · Mn 1,0–1,5% · Cu 0,05–0,20%", densidade:2.73, aplicacoes:"Utensílios, tanques, chapas de uso geral", fusao:"643–654 °C", tratamento:"Recozimento: 345–415 °C (não tratável termicamente)"},
+      {designacao:"AA 5052", nome:"Al-Magnésio", composicao:"Al base · Mg 2,2–2,8% · Cr 0,15–0,35%", densidade:2.68, aplicacoes:"Ambientes marinhos, tanques de combustível, painéis", fusao:"594–649 °C", tratamento:"Recozimento: ≈ 345 °C (não tratável termicamente)"},
+      {designacao:"AA 6061", nome:"Al-Magnésio-Silício", composicao:"Al base · Mg 0,8–1,2% · Si 0,4–0,8% · Cu 0,15–0,40% · Cr 0,04–0,35%", densidade:2.70, aplicacoes:"Estrutural, náutica, uso geral tratável termicamente", fusao:"582–652 °C", tratamento:"Solubilização ≈ 530 °C + Envelhecimento 160–175 °C (têmpera T6)"},
+      {designacao:"AA 6063", nome:"Al-Magnésio-Silício (Extrusão)", composicao:"Al base · Mg 0,45–0,90% · Si 0,20–0,60%", densidade:2.69, aplicacoes:"Perfis extrudados, esquadrias, arquitetura", fusao:"615–655 °C", tratamento:"Solubilização ≈ 520 °C + Envelhecimento 175–205 °C (têmpera T5/T6)"},
+      {designacao:"AA 7075", nome:"Al-Zinco (Alta Resistência)", composicao:"Al base · Zn 5,6–6,1% · Mg 2,1–2,5% · Cu 1,2–1,6%", densidade:2.81, aplicacoes:"Aeronáutica, peças estruturais de alta resistência", fusao:"477–635 °C", tratamento:"Solubilização ≈ 480 °C + Envelhecimento 120 °C/24h (têmpera T6)"},
     ],
   },
   acoInox: {
     label:"Aço Inox", emoji:"🔘", cor:"#64748b",
     ligas:[
-      {designacao:"AISI 304", nome:"Inox Austenítico 18-8", composicao:"Cr 18,0–20,0% · Ni 8,0–10,5% · C ≤ 0,08%", densidade:8.00, aplicacoes:"Uso geral, alimentício, arquitetônico"},
-      {designacao:"AISI 316", nome:"Inox Austenítico c/ Molibdênio", composicao:"Cr 16,0–18,0% · Ni 10,0–14,0% · Mo 2,0–3,0% · C ≤ 0,08%", densidade:8.00, aplicacoes:"Ambientes marítimos, químico, farmacêutico"},
-      {designacao:"AISI 430", nome:"Inox Ferrítico", composicao:"Cr 16,0–18,0% · Ni ≤ 0,75% · C ≤ 0,12%", densidade:7.70, aplicacoes:"Eletrodomésticos, decoração, automotivo (não estrutural)"},
-      {designacao:"AISI 410", nome:"Inox Martensítico", composicao:"Cr 11,5–13,5% · C ≤ 0,15%", densidade:7.75, aplicacoes:"Cutelaria, componentes temperáveis, válvulas"},
+      {designacao:"AISI 304", nome:"Inox Austenítico 18-8", composicao:"Cr 18,0–20,0% · Ni 8,0–10,5% · C ≤ 0,08%", densidade:8.00, aplicacoes:"Uso geral, alimentício, arquitetônico", fusao:"1400–1450 °C", tratamento:"Solubilização: 1010–1120 °C + resfriamento rápido"},
+      {designacao:"AISI 316", nome:"Inox Austenítico c/ Molibdênio", composicao:"Cr 16,0–18,0% · Ni 10,0–14,0% · Mo 2,0–3,0% · C ≤ 0,08%", densidade:8.00, aplicacoes:"Ambientes marítimos, químico, farmacêutico", fusao:"1375–1400 °C", tratamento:"Solubilização: 1010–1120 °C + resfriamento rápido"},
+      {designacao:"AISI 430", nome:"Inox Ferrítico", composicao:"Cr 16,0–18,0% · Ni ≤ 0,75% · C ≤ 0,12%", densidade:7.70, aplicacoes:"Eletrodomésticos, decoração, automotivo (não estrutural)", fusao:"1425–1510 °C", tratamento:"Recozimento: 705–790 °C"},
+      {designacao:"AISI 410", nome:"Inox Martensítico", composicao:"Cr 11,5–13,5% · C ≤ 0,15%", densidade:7.75, aplicacoes:"Cutelaria, componentes temperáveis, válvulas", fusao:"1480–1530 °C", tratamento:"Têmpera: 980–1040 °C + Revenido conforme dureza desejada"},
     ],
   },
   acoCarbono: {
     label:"Aço Carbono", emoji:"⚫", cor:"#334155",
     ligas:[
-      {designacao:"SAE 1018", nome:"Aço Baixo Carbono", composicao:"C 0,15–0,20% · Mn 0,60–0,90%", densidade:7.87, aplicacoes:"Peças usinadas de uso geral, boa soldabilidade"},
-      {designacao:"SAE 1020", nome:"Aço Baixo Carbono", composicao:"C 0,17–0,23% · Mn 0,30–0,60%", densidade:7.87, aplicacoes:"Eixos, parafusos, peças estruturais leves"},
-      {designacao:"ASTM A36", nome:"Aço Estrutural", composicao:"C ≤ 0,25–0,29% · Mn ≈ 1,00%", densidade:7.85, aplicacoes:"Construção civil, estruturas metálicas, chapas"},
-      {designacao:"SAE 1045", nome:"Aço Médio Carbono", composicao:"C 0,43–0,50% · Mn 0,60–0,90%", densidade:7.85, aplicacoes:"Eixos, engrenagens, componentes de maior resistência"},
+      {designacao:"SAE 1018", nome:"Aço Baixo Carbono", composicao:"C 0,15–0,20% · Mn 0,60–0,90%", densidade:7.87, aplicacoes:"Peças usinadas de uso geral, boa soldabilidade", fusao:"1425–1540 °C", tratamento:"Normalização: 880–930 °C"},
+      {designacao:"SAE 1020", nome:"Aço Baixo Carbono", composicao:"C 0,17–0,23% · Mn 0,30–0,60%", densidade:7.87, aplicacoes:"Eixos, parafusos, peças estruturais leves", fusao:"1425–1540 °C", tratamento:"Normalização: 870–920 °C"},
+      {designacao:"ASTM A36", nome:"Aço Estrutural", composicao:"C ≤ 0,25–0,29% · Mn ≈ 1,00%", densidade:7.85, aplicacoes:"Construção civil, estruturas metálicas, chapas", fusao:"1425–1540 °C", tratamento:"Normalização: 880–930 °C"},
+      {designacao:"SAE 1045", nome:"Aço Médio Carbono", composicao:"C 0,43–0,50% · Mn 0,60–0,90%", densidade:7.85, aplicacoes:"Eixos, engrenagens, componentes de maior resistência", fusao:"1470–1500 °C", tratamento:"Têmpera: 820–850 °C + Revenido 400–650 °C"},
     ],
   },
   bronze: {
     label:"Bronze", emoji:"🟤", cor:"#a16207",
     ligas:[
-      {designacao:"UNS C51000", nome:"Bronze Fosforoso 5%", composicao:"Cu base · Sn 4,2–5,8% · P 0,03–0,35%", densidade:8.86, aplicacoes:"Molas, contatos elétricos, buchas"},
-      {designacao:"UNS C93200 (SAE 660)", nome:"Bronze de Mancal (Chumbado)", composicao:"Cu ≈ 83% · Sn ≈ 7% · Pb ≈ 7% · Zn ≈ 3%", densidade:8.93, aplicacoes:"Mancais, buchas de deslizamento, bronzinas"},
-      {designacao:"UNS C95400", nome:"Bronze de Alumínio", composicao:"Cu base · Al 10,0–11,5% · Fe 3,0–5,0%", densidade:7.45, aplicacoes:"Alta resistência mecânica, engrenagens, hélices navais"},
+      {designacao:"UNS C51000", nome:"Bronze Fosforoso 5%", composicao:"Cu base · Sn 4,2–5,8% · P 0,03–0,35%", densidade:8.86, aplicacoes:"Molas, contatos elétricos, buchas", fusao:"950–1050 °C", tratamento:"Recozimento: 425–750 °C"},
+      {designacao:"UNS C93200 (SAE 660)", nome:"Bronze de Mancal (Chumbado)", composicao:"Cu ≈ 83% · Sn ≈ 7% · Pb ≈ 7% · Zn ≈ 3%", densidade:8.93, aplicacoes:"Mancais, buchas de deslizamento, bronzinas", fusao:"855–1000 °C", tratamento:"Geralmente usado como fundido — sem tratamento térmico usual"},
+      {designacao:"UNS C95400", nome:"Bronze de Alumínio", composicao:"Cu base · Al 10,0–11,5% · Fe 3,0–5,0%", densidade:7.45, aplicacoes:"Alta resistência mecânica, engrenagens, hélices navais", fusao:"1040–1055 °C", tratamento:"Recozimento: 600–650 °C"},
     ],
   },
 };
@@ -315,6 +315,45 @@ const BITOLAS_PADRAO = {
   tubo_quadrado:    { label:"Tubo Quadrado (Metalon)", unidade:"Lado (mm)", parede:[0.9,1.2,1.5,2.0,3.0], valores:[20,25,30,40,50,60,80,100] },
   tubo_retangular:  { label:"Tubo Retangular (Metalon)", unidade:"Lados (mm)", parede:[0.9,1.2,1.5,2.0,3.0], pares:[[20,10],[30,10],[30,20],[40,20],[40,30],[50,20],[50,30],[60,30],[60,40],[80,40],[100,50]] },
   chapa:            { label:"Chapa / Fita",     unidade:"Espessura (mm)", valores:[0.30,0.40,0.50,0.60,0.75,0.80,0.90,1.06,1.20,1.50,1.90,2.25,2.65,3.00,3.75,4.75,6.30,8.00,9.50,12.50,16.00,19.00,25.40] },
+  cantoneira:       { label:"Cantoneira Abas Iguais", unidade:"Aba (mm)", parede:[3,4,5,6,8,10], valores:[20,25,30,35,40,45,50,60,65,75,80,90,100] },
+  perfil_u:         {
+    label:"Perfil U Dobrado", tipo:"catalogo", unidade:"Designação / Alma (mm) / Espessura (mm)",
+    // Fonte: catálogo comercial (Setefer) — perfil U dobrado a frio, peso de catálogo (não calculado)
+    itens:[
+      {designacao:'3" x 1 1/2"', alma:43.2, esp:2.0, peso:6.11},
+      {designacao:'3" x 1 1/2"', alma:55.9, esp:2.2, peso:7.44},
+      {designacao:'3" x 1 1/2"', alma:65.8, esp:2.5, peso:8.93},
+      {designacao:'4" x 1 5/8"', alma:48.3, esp:2.0, peso:11.40},
+      {designacao:'4" x 1 5/8"', alma:64.3, esp:2.2, peso:12.70},
+      {designacao:'4" x 1 5/8"', alma:72.4, esp:2.5, peso:14.20},
+      {designacao:'5" x 3"',     alma:88.1, esp:2.0, peso:18.20},
+      {designacao:'5" x 3"',     alma:101.6,esp:2.2, peso:20.50},
+      {designacao:'5" x 3"',     alma:115.1,esp:2.5, peso:23.10},
+      {designacao:'6" x 2"',     alma:87.1, esp:2.0, peso:22.00},
+      {designacao:'6" x 2"',     alma:101.6,esp:2.2, peso:25.70},
+      {designacao:'6" x 2"',     alma:116.1,esp:2.5, peso:29.80},
+    ],
+  },
+};
+
+// ── Tolerâncias ISO 286 — calculado ao vivo pela fórmula oficial (não é tabela fixa digitada) ──
+// Fonte: ISO 286-1:2010. i = 0,45×D^(1/3) + 0,001×D (µm), D = média geométrica da faixa de medida (mm).
+// Faixas de medida nominal válidas até 500mm (acima disso a norma usa outra fórmula, fora do escopo comercial usual).
+const ISO286_FAIXAS = [[1,3],[3,6],[6,10],[10,18],[18,30],[30,50],[50,80],[80,120],[120,180],[180,250],[250,315],[315,400],[400,500]];
+const ISO286_GRAUS = {5:7,6:10,7:16,8:25,9:40,10:64,11:100,12:160,13:250,14:400,15:640,16:1000};
+const ISO286_USO = {
+  5:"Ajuste de precisão, rolamentos, calibres",6:"Ajuste fino, eixos de precisão",7:"Ajuste geral de máquinas, roscas",
+  8:"Uso geral, mancais deslizantes",9:"Peças usinadas de uso geral",10:"Usinagem grosseira, furação",
+  11:"Peças móveis com folga, uso geral",12:"Estampados, peças não-usinadas",13:"Fundição de precisão",
+  14:"Fundição em areia, forjamento",15:"Extrusão, laminação a quente",16:"Processos muito grosseiros",
+};
+const calcISO286=(nominal)=>{
+  const faixa=ISO286_FAIXAS.find(([min,max])=>nominal>min&&nominal<=max) || (nominal<=1?ISO286_FAIXAS[0]:null);
+  if(!faixa)return null;
+  const [min,max]=faixa;
+  const D=Math.sqrt(min*max);
+  const i=0.45*Math.pow(D,1/3)+0.001*D; // µm
+  return {faixa,i,graus:Object.entries(ISO286_GRAUS).map(([grau,mult])=>({grau:+grau,mult,um:mult*i}))};
 };
 
 const GEOMETRIAS = [
@@ -339,6 +378,7 @@ const calcAreaSecao=(geoId,v)=>{
     case "barra_retangular": { const a=v.largura,b=v.altura; if(!a||!b)return null; return a*b; }
     case "barra_sextavada": { const f=v.faces; if(!f)return null; return 0.8660254*f*f; }
     case "chapa_fita": { const a=v.largura,e=v.esp; if(!a||!e)return null; return a*e; }
+    case "cantoneira": { const l=v.aba,e=v.esp; if(!l||!e)return null; return 2*l*e-e*e; } // aproximação sem raio de concordância
     case "arame": { const d=v.d; if(!d)return null; return Math.PI/4*d*d; }
     default: return null;
   }
@@ -2836,6 +2876,7 @@ function PesoCalculadora({T}) {
   const [vals,setVals]=useState({});
   const [comprimento,setComprimento]=useState("");
   const [qtd,setQtd]=useState("1");
+  const [precoKg,setPrecoKg]=useState("");
   const [showLigas,setShowLigas]=useState(false);
 
   useEffect(()=>{
@@ -2862,6 +2903,9 @@ function PesoCalculadora({T}) {
   const pesoPorMetro=areaMM2!=null?(areaMM2*1000*densidade)/1_000_000:null; // kg/m
   const pesoUnit=areaMM2!=null&&compM!=null?(areaMM2*(compM*1000)*densidade)/1_000_000:null; // kg (1 peça)
   const pesoTotal=pesoUnit!=null?pesoUnit*q:null;
+  const preco=parseNum(precoKg);
+  const valorUnit=pesoUnit!=null&&preco!=null?pesoUnit*preco:null;
+  const valorTotal=pesoTotal!=null&&preco!=null?pesoTotal*preco:null;
 
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const iSt={width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 11px",color:T.text,fontSize:14,boxSizing:"border-box",outline:"none"};
@@ -2914,6 +2958,10 @@ function PesoCalculadora({T}) {
             <label style={lSt}>Quantidade de peças</label>
             <input value={qtd} onChange={e=>setQtd(e.target.value)} placeholder="1" style={iSt}/>
           </div>
+          <div>
+            <label style={lSt}>Preço por kg (R$) <span style={{color:T.faint,fontWeight:400}}>— opcional</span></label>
+            <input value={precoKg} onChange={e=>setPrecoKg(e.target.value)} placeholder="Ex: 42,50" style={iSt}/>
+          </div>
         </div>
 
         {areaMM2==null&&Object.values(vals).some(v=>v)&&(
@@ -2938,6 +2986,23 @@ function PesoCalculadora({T}) {
         </div>
         {areaMM2!=null&&(
           <div style={{fontSize:11.5,color:T.faint,marginTop:12}}>Área da seção transversal: {new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(areaMM2)} mm² ({new Intl.NumberFormat("pt-BR",{maximumFractionDigits:4}).format(areaMM2/100)} cm²)</div>
+        )}
+
+        {preco!=null&&(
+          <div className="dg-grid dg-grid-3" style={{display:"grid",gap:12,marginTop:12}}>
+            <div style={{background:"#f59e0b15",border:"1px solid #f59e0b40",borderRadius:10,padding:"14px 16px",borderLeft:"3px solid #f59e0b"}}>
+              <div style={{fontSize:10.5,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>💰 Valor por Metro</div>
+              <div style={{fontSize:19,fontWeight:700,color:"#f59e0b"}}>{pesoPorMetro!=null?fmtRS(pesoPorMetro*preco):"—"}</div>
+            </div>
+            <div style={{background:"#f59e0b15",border:"1px solid #f59e0b40",borderRadius:10,padding:"14px 16px",borderLeft:"3px solid #f59e0b"}}>
+              <div style={{fontSize:10.5,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>💰 Valor por Peça</div>
+              <div style={{fontSize:19,fontWeight:700,color:"#f59e0b"}}>{valorUnit!=null?fmtRS(valorUnit):"—"}</div>
+            </div>
+            <div style={{background:"#f59e0b15",border:"1px solid #f59e0b40",borderRadius:10,padding:"14px 16px",borderLeft:"3px solid #f59e0b"}}>
+              <div style={{fontSize:10.5,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>💰 Valor Total ({q}x)</div>
+              <div style={{fontSize:19,fontWeight:700,color:"#f59e0b"}}>{valorTotal!=null?fmtRS(valorTotal):"—"}</div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -3152,7 +3217,17 @@ function TabelaLigasPage({T,onBack}) {
                     ρ ≈ {l.densidade.toFixed(2)} g/cm³
                   </div>
                 </div>
-                <div style={{fontSize:12.5,color:T.sub,marginBottom:6,fontFamily:"monospace"}}>{l.composicao}</div>
+                <div style={{fontSize:12.5,color:T.sub,marginBottom:10,fontFamily:"monospace"}}>{l.composicao}</div>
+                <div className="dg-grid dg-grid-2" style={{display:"grid",gap:8,marginBottom:10}}>
+                  <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px"}}>
+                    <div style={{fontSize:10,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:2}}>🔥 Faixa de Fusão</div>
+                    <div style={{fontSize:12.5,color:"#ef4444",fontWeight:600}}>{l.fusao}</div>
+                  </div>
+                  <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px"}}>
+                    <div style={{fontSize:10,color:T.faint,textTransform:"uppercase",letterSpacing:.4,marginBottom:2}}>🌡️ Tratamento Térmico</div>
+                    <div style={{fontSize:12.5,color:"#f59e0b",fontWeight:600}}>{l.tratamento}</div>
+                  </div>
+                </div>
                 <div style={{fontSize:11.5,color:T.faint}}><strong style={{color:T.muted}}>Aplicações:</strong> {l.aplicacoes}</div>
               </div>
             ))}
@@ -3161,7 +3236,7 @@ function TabelaLigasPage({T,onBack}) {
       </div>
 
       <div style={{fontSize:11,color:T.faint,textAlign:"center"}}>
-        Valores de composição em % de massa, faixas típicas de norma. Densidades são valores de referência — podem variar conforme têmpera e fornecedor.
+        Valores de composição em % de massa, faixas típicas de norma. Densidades, faixas de fusão e temperaturas de tratamento são valores de referência — podem variar conforme têmpera, elementos residuais e fornecedor. Consulte o certificado de qualidade para aplicações críticas.
       </div>
     </div>
   );
@@ -3173,6 +3248,7 @@ function TabelaMedidasPage({T,onBack}) {
     {key:"barras", label:"Barras",         emoji:"📏", cor:"#3b82f6", subs:["barra_redonda","barra_quadrada","barra_sextavada","barra_chata"]},
     {key:"tubos",  label:"Tubos",           emoji:"🔩", cor:"#06b6d4", subs:["tubo_redondo","tubo_quadrado","tubo_retangular"]},
     {key:"chapas", label:"Chapas / Fitas",  emoji:"▯",  cor:"#8b5cf6", subs:["chapa"]},
+    {key:"laminados", label:"Laminados",    emoji:"📊", cor:"#f59e0b", subs:["cantoneira","perfil_u"]},
   ];
   const [aba,setAba]=useState("barras");
   const [sub,setSub]=useState("barra_redonda");
@@ -3183,11 +3259,12 @@ function TabelaMedidasPage({T,onBack}) {
   const changeSub=(s)=>{setSub(s);setParede(BITOLAS_PADRAO[s].parede?BITOLAS_PADRAO[s].parede[0]:null);};
 
   const dados=BITOLAS_PADRAO[sub];
+  const isCatalogo=dados.tipo==="catalogo";
   const densidade=LIGA_DENSIDADES[liga];
   const abaAtual=ABAS.find(a=>a.key===aba);
 
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
-  const SUB_LABELS={barra_redonda:"Redonda",barra_quadrada:"Quadrada",barra_sextavada:"Sextavada",barra_chata:"Chata",tubo_redondo:"Redondo",tubo_quadrado:"Quadrado",tubo_retangular:"Retangular",chapa:"Chapa/Fita"};
+  const SUB_LABELS={barra_redonda:"Redonda",barra_quadrada:"Quadrada",barra_sextavada:"Sextavada",barra_chata:"Chata",tubo_redondo:"Redondo",tubo_quadrado:"Quadrado",tubo_retangular:"Retangular",chapa:"Chapa/Fita",cantoneira:"Cantoneira (L)",perfil_u:"Perfil U"};
 
   // Calcula peso/m (ou peso/m² para chapa) usando as mesmas fórmulas da Calculadora de Pesos
   const pesoPorMetro=(valOrPar)=>{
@@ -3200,11 +3277,12 @@ function TabelaMedidasPage({T,onBack}) {
     else if(sub==="tubo_quadrado")area=calcAreaSecao("tubo_quadrado",{lado:valOrPar,esp:parede});
     else if(sub==="tubo_retangular")area=calcAreaSecao("tubo_retangular",{largura:valOrPar[0],altura:valOrPar[1],esp:parede});
     else if(sub==="chapa")        area=calcAreaSecao("chapa_fita",{largura:1000,esp:valOrPar}); // kg/m² (largura=1m)
+    else if(sub==="cantoneira")   area=calcAreaSecao("cantoneira",{aba:valOrPar,esp:parede});
     if(area==null)return null;
     return (area*1000*densidade)/1_000_000;
   };
 
-  const linhas=(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
+  const linhas=isCatalogo?[]:(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
 
   return (
     <div>
@@ -3213,7 +3291,7 @@ function TabelaMedidasPage({T,onBack}) {
       <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
         <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>📐 Tabela de Medidas Padronizadas</div>
         <div style={{fontSize:12,color:T.muted}}>
-          Bitolas comerciais mais usadas no mercado brasileiro (referência Gerdau/NBR 8580 e mercado de metalon). O peso por metro é <strong style={{color:T.text}}>calculado ao vivo</strong> com a mesma fórmula da Calculadora de Pesos — não é um valor de catálogo digitado, então qualquer material pode ser conferido.
+          Bitolas comerciais mais usadas no mercado brasileiro (referência Gerdau/NBR 8580 e mercado de metalon). O peso por metro de Barras, Tubos e Chapas é <strong style={{color:T.text}}>calculado ao vivo</strong> com a mesma fórmula da Calculadora de Pesos. Já os perfis Laminados de catálogo usam peso de fabricante (não recalculável por material).
         </div>
       </div>
 
@@ -3239,42 +3317,73 @@ function TabelaMedidasPage({T,onBack}) {
         ))}
       </div>
 
-      <div style={{...cSt,borderTop:`3px solid ${abaAtual.cor}`}}>
-        <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
-          <div style={{minWidth:180}}>
-            <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Material (densidade)</label>
-            <select value={liga} onChange={e=>setLiga(e.target.value)} style={{width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px",color:T.text,fontSize:13.5}}>
-              {Object.keys(LIGA_DENSIDADES).map(l=><option key={l} value={l}>{l} ({LIGA_DENSIDADES[l].toFixed(2)} g/cm³)</option>)}
-            </select>
-          </div>
-          {dados.parede&&(
-            <div>
-              <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Espessura de Parede (mm)</label>
-              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                {dados.parede.map(p=>(
-                  <button key={p} onClick={()=>setParede(p)} style={{
-                    padding:"7px 12px",borderRadius:6,cursor:"pointer",fontSize:12.5,fontWeight:parede===p?600:400,
-                    background:parede===p?abaAtual.cor+"20":T.card2,color:parede===p?abaAtual.cor:T.sub,
-                    border:`1px solid ${parede===p?abaAtual.cor:T.border}`,
-                  }}>{p.toFixed(2).replace(".",",")}</button>
-                ))}
-              </div>
-            </div>
-          )}
+      {aba==="laminados"&&(
+        <div style={{background:"#f59e0b15",border:"1px solid #f59e0b40",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:11.5,color:T.sub,lineHeight:1.5}}>
+          <strong style={{color:"#f59e0b"}}>⚠️ Cobertura parcial:</strong> por enquanto só temos Cantoneira de Abas Iguais (calculada) e Perfil U Dobrado (catálogo). Perfil I e Perfil T ainda não têm dado de catálogo confiável levantado — podem ser adicionados depois.
         </div>
+      )}
+
+      <div style={{...cSt,borderTop:`3px solid ${abaAtual.cor}`}}>
+        {!isCatalogo&&(
+          <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
+            <div style={{minWidth:180}}>
+              <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Material (densidade)</label>
+              <select value={liga} onChange={e=>setLiga(e.target.value)} style={{width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px",color:T.text,fontSize:13.5}}>
+                {Object.keys(LIGA_DENSIDADES).map(l=><option key={l} value={l}>{l} ({LIGA_DENSIDADES[l].toFixed(2)} g/cm³)</option>)}
+              </select>
+            </div>
+            {dados.parede&&(
+              <div>
+                <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>{sub==="cantoneira"?"Espessura (mm)":"Espessura de Parede (mm)"}</label>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {dados.parede.map(p=>(
+                    <button key={p} onClick={()=>setParede(p)} style={{
+                      padding:"7px 12px",borderRadius:6,cursor:"pointer",fontSize:12.5,fontWeight:parede===p?600:400,
+                      background:parede===p?abaAtual.cor+"20":T.card2,color:parede===p?abaAtual.cor:T.sub,
+                      border:`1px solid ${parede===p?abaAtual.cor:T.border}`,
+                    }}>{p.toFixed(2).replace(".",",")}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {isCatalogo&&(
+          <div style={{fontSize:11.5,color:T.faint,marginBottom:14}}>Peso de catálogo (aço-carbono) — fonte: catálogo comercial de perfil U dobrado a frio. Não recalculável por material.</div>
+        )}
 
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
             <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
-              <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{dados.unidade}</th>
-              <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{sub==="chapa"?"Peso (kg/m²)":"Peso Nominal (kg/m)"}</th>
+              {isCatalogo?(
+                <>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Designação</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Alma (mm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Espessura (mm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Peso (kg/m)</th>
+                </>
+              ):(
+                <>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{dados.unidade}</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{sub==="chapa"?"Peso (kg/m²)":"Peso Nominal (kg/m)"}</th>
+                </>
+              )}
             </tr></thead>
-            <tbody>{linhas.map(l=>(
-              <tr key={l.key} style={{borderBottom:`1px solid ${T.border}50`}}>
-                <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{Array.isArray(l.val)?l.val.join(" × "):new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(l.val)}</td>
-                <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:600}}>{l.peso!=null?fmtKg(l.peso):"—"}</td>
-              </tr>
-            ))}</tbody>
+            <tbody>
+              {isCatalogo?dados.itens.map((it,i)=>(
+                <tr key={i} style={{borderBottom:`1px solid ${T.border}50`}}>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{it.designacao}</td>
+                  <td style={{padding:"9px 10px",color:T.sub}}>{it.alma.toFixed(1).replace(".",",")}</td>
+                  <td style={{padding:"9px 10px",color:T.sub}}>{it.esp.toFixed(1).replace(".",",")}</td>
+                  <td style={{padding:"9px 10px",color:"#f59e0b",fontWeight:600}}>{it.peso.toFixed(2).replace(".",",")} kg/m</td>
+                </tr>
+              )):linhas.map(l=>(
+                <tr key={l.key} style={{borderBottom:`1px solid ${T.border}50`}}>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{Array.isArray(l.val)?l.val.join(" × "):new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(l.val)}</td>
+                  <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:600}}>{l.peso!=null?fmtKg(l.peso):"—"}</td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       </div>
@@ -3286,12 +3395,12 @@ function TabelaMedidasPage({T,onBack}) {
   );
 }
 
+
 function BibliotecaPage({T,onNavigate}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const modules=[
     {id:"peso",   emoji:"⚖️", label:"Calculadora de Pesos",    desc:"Calcule o peso de barras, tubos e perfis a partir das dimensões e do material.", ready:true},
-    {id:"medidas",emoji:"📐", label:"Tabela de Medidas Padronizadas", desc:"Bitolas comerciais de barras, tubos e chapas, com peso por metro calculado.", ready:true},
-    {id:"lam",    emoji:"📊", label:"Tabela de Laminados",       desc:"Perfis U, I, L e T com dimensões e pesos por metro.", ready:false},
+    {id:"medidas",emoji:"📐", label:"Tabela de Medidas Padronizadas", desc:"Bitolas comerciais de barras, tubos, chapas e laminados, com peso por metro.", ready:true},
     {id:"ligas",  emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição química das principais ligas de cobre, latão, alumínio, aço e bronze.", ready:true},
     {id:"conv",   emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns.", ready:true},
   ];
