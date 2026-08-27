@@ -3396,6 +3396,66 @@ function TabelaMedidasPage({T,onBack}) {
 }
 
 
+// ── TabelaTolerancePage: tolerâncias ISO 286, calculadas ao vivo pela fórmula oficial ──
+function TabelaTolerancePage({T,onBack}) {
+  const [nominal,setNominal]=useState("60");
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const n=parseNum(nominal);
+  const resultado=n!=null?calcISO286(n):null;
+
+  return (
+    <div>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,background:T.card,color:T.sub,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13,marginBottom:18}}>← Voltar para Biblioteca</button>
+
+      <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
+        <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>📏 Tolerâncias Dimensionais (ISO 286)</div>
+        <div style={{fontSize:12,color:T.muted}}>
+          Calculado ao vivo pela fórmula oficial da norma (i = 0,45×D<sup>1/3</sup> + 0,001×D), não é uma tabela fixa digitada — funciona pra qualquer medida entre 1 e 500mm. Graus IT5 a IT16 (faixa de uso comercial/industrial mais comum).
+        </div>
+      </div>
+
+      <div style={{...cSt,marginBottom:16}}>
+        <label style={{display:"block",fontSize:12,color:T.sub,marginBottom:6,fontWeight:600}}>Medida Nominal (mm)</label>
+        <input value={nominal} onChange={e=>setNominal(e.target.value)} placeholder="Ex: 60"
+          style={{width:"100%",maxWidth:240,background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",color:T.text,fontSize:16,fontWeight:600,boxSizing:"border-box",outline:"none"}}/>
+        {n!=null&&(n<=0||n>500)&&(
+          <div style={{marginTop:10,fontSize:12,color:"#ef4444"}}>Faixa válida: acima de 0 até 500mm (acima disso a norma usa outra fórmula, fora do escopo deste módulo).</div>
+        )}
+      </div>
+
+      {resultado&&(
+        <div style={{...cSt,borderTop:"3px solid #10b981"}}>
+          <div style={{fontSize:12.5,color:T.muted,marginBottom:16}}>
+            Faixa de medida: <strong style={{color:T.text}}>{`>${resultado.faixa[0]} a ${resultado.faixa[1]}mm`}</strong> · Unidade de tolerância (i): <strong style={{color:T.text}}>{resultado.i.toFixed(3)} µm</strong>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
+              <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
+                <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Grau IT</th>
+                <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Tolerância (µm)</th>
+                <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Tolerância (mm)</th>
+                <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Uso Típico</th>
+              </tr></thead>
+              <tbody>{resultado.graus.map(g=>(
+                <tr key={g.grau} style={{borderBottom:`1px solid ${T.border}50`}}>
+                  <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:700}}>IT{g.grau}</td>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{new Intl.NumberFormat("pt-BR",{maximumFractionDigits:1}).format(g.um)} µm</td>
+                  <td style={{padding:"9px 10px",color:T.sub}}>±{(g.um/2000).toFixed(4).replace(".",",")}</td>
+                  <td style={{padding:"9px 10px",color:T.faint,fontSize:12.5}}>{ISO286_USO[g.grau]}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div style={{fontSize:11,color:T.faint,textAlign:"center",marginTop:12}}>
+        A tolerância ISO define a <strong>largura total</strong> da zona (não é uma coluna de "±" por padrão) — a posição exata (acima/abaixo da medida nominal) depende do desvio fundamental (letras como H7, g6, etc.), que este módulo ainda não calcula. A coluna "±" acima assume distribuição simétrica, só como referência rápida.
+      </div>
+    </div>
+  );
+}
+
 function BibliotecaPage({T,onNavigate}) {
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
   const modules=[
@@ -3403,6 +3463,7 @@ function BibliotecaPage({T,onNavigate}) {
     {id:"medidas",emoji:"📐", label:"Tabela de Medidas Padronizadas", desc:"Bitolas comerciais de barras, tubos, chapas e laminados, com peso por metro.", ready:true},
     {id:"ligas",  emoji:"🪙", label:"Tabela de Ligas",            desc:"Composição química das principais ligas de cobre, latão, alumínio, aço e bronze.", ready:true},
     {id:"conv",   emoji:"🔄", label:"Conversor de Unidades",     desc:"Converta entre kg, lb, polegadas, milímetros e outras unidades comuns.", ready:true},
+    {id:"tol",    emoji:"📏", label:"Tolerâncias Dimensionais (ISO 286)", desc:"Calcule a tolerância de qualquer medida nos graus IT5 a IT16.", ready:true},
   ];
   return (
     <div>
@@ -3419,7 +3480,7 @@ function BibliotecaPage({T,onNavigate}) {
       </div>
       <div className="dg-grid dg-grid-3" style={{display:"grid",gap:14}}>
         {modules.map(({id,emoji,label,desc,ready})=>(
-          <div key={label} onClick={()=>{if(!ready||!onNavigate)return;if(id==="peso")onNavigate("calc-pesos");if(id==="conv")onNavigate("calc-unidades");if(id==="ligas")onNavigate("tabela-ligas");if(id==="medidas")onNavigate("tabela-medidas");}}
+          <div key={label} onClick={()=>{if(!ready||!onNavigate)return;if(id==="peso")onNavigate("calc-pesos");if(id==="conv")onNavigate("calc-unidades");if(id==="ligas")onNavigate("tabela-ligas");if(id==="medidas")onNavigate("tabela-medidas");if(id==="tol")onNavigate("tabela-tolerancia");}}
             className={ready?"dg-lift":""}
             style={{...cSt,opacity:ready?1:.65,cursor:ready?"pointer":"default",borderLeft:`3px solid ${ready?"#3b82f6":T.border}`}}>
             <div style={{fontSize:26,marginBottom:10}}>{emoji}</div>
@@ -4038,7 +4099,7 @@ export default function App() {
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon},{id:"auditoria",label:"Log de Auditoria",icon:Shield}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas","tabela-medidas":"Tabela de Medidas Padronizadas"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas","tabela-medidas":"Tabela de Medidas Padronizadas","tabela-tolerancia":"Tolerâncias Dimensionais (ISO 286)"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -4163,6 +4224,7 @@ export default function App() {
           {page==="calc-unidades"&&<ConversorPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="tabela-ligas"&&<TabelaLigasPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="tabela-medidas"&&<TabelaMedidasPage T={T} onBack={()=>setPage("biblioteca")}/>}
+          {page==="tabela-tolerancia"&&<TabelaTolerancePage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="usuarios"&&isAdmin(currentUser)&&<UsersPage T={T} currentUser={currentUser} onUserUpdated={setCurrentUser}/>}
           {page==="auditoria"&&isAdmin(currentUser)&&<AuditLogPage T={T}/>}
         </div>
