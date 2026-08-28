@@ -356,6 +356,46 @@ const calcISO286=(nominal)=>{
   return {faixa,i,graus:Object.entries(ISO286_GRAUS).map(([grau,mult])=>({grau:+grau,mult,um:mult*i}))};
 };
 
+// ── Desvio fundamental (posição da zona em relação à medida nominal) ──
+// Fonte: ISO 286-1 Tabelas 2/4 — valores de "es" (desvio superior do eixo) por faixa de medida, em µm.
+// Escopo: letras de eixo mais usadas comercialmente (d,e,f,g,h) + furo H (base-furo, o mais comum na indústria).
+// Não é o sistema completo de 28 letras da norma.
+const ISO286_ES_EIXO = {
+  d: [-20,-30,-40,-50,-65,-80,-100,-120,-145,-170,-190,-210,-230],
+  e: [-14,-20,-25,-32,-40,-50,-60,-72,-85,-100,-110,-125,-135],
+  f: [-6,-10,-13,-16,-20,-25,-30,-36,-43,-50,-56,-62,-68],
+  g: [-2,-4,-5,-6,-7,-9,-10,-12,-14,-15,-17,-18,-20],
+  h: [0,0,0,0,0,0,0,0,0,0,0,0,0],
+};
+// Classes de ajuste comuns pra exibir por padrão (furo sempre H — base-furo, EI=0; eixo variando a posição)
+const ISO286_CLASSES_COMUNS=[
+  {tipo:"furo",  letra:"H", grau:7,  label:"H7"},
+  {tipo:"furo",  letra:"H", grau:8,  label:"H8"},
+  {tipo:"furo",  letra:"H", grau:9,  label:"H9"},
+  {tipo:"furo",  letra:"H", grau:11, label:"H11"},
+  {tipo:"eixo",  letra:"h", grau:6,  label:"h6"},
+  {tipo:"eixo",  letra:"h", grau:7,  label:"h7"},
+  {tipo:"eixo",  letra:"h", grau:9,  label:"h9"},
+  {tipo:"eixo",  letra:"h", grau:10, label:"h10"},
+  {tipo:"eixo",  letra:"h", grau:11, label:"h11"},
+  {tipo:"eixo",  letra:"g", grau:6,  label:"g6"},
+  {tipo:"eixo",  letra:"f", grau:7,  label:"f7"},
+  {tipo:"eixo",  letra:"e", grau:8,  label:"e8"},
+  {tipo:"eixo",  letra:"d", grau:9,  label:"d9"},
+];
+const calcClasseAjuste=(nominal,classe)=>{
+  const base=calcISO286(nominal);
+  if(!base)return null;
+  const idx=ISO286_FAIXAS.findIndex(f=>f===base.faixa);
+  const IT=ISO286_GRAUS[classe.grau]*base.i;
+  if(classe.tipo==="furo"){ // furo H: EI=0 sempre (base-furo)
+    return {ei:0,es:IT};
+  }
+  const esEixo=ISO286_ES_EIXO[classe.letra]?.[idx];
+  if(esEixo==null)return null;
+  return {es:esEixo,ei:esEixo-IT};
+};
+
 const GEOMETRIAS = [
   {id:"tubo_redondo",    label:"Tubo Redondo",      emoji:"⭕", fields:[{k:"od",label:"Diâmetro Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
   {id:"tubo_quadrado",   label:"Tubo Quadrado",     emoji:"◻️", fields:[{k:"lado",label:"Lado Externo (mm)"},{k:"esp",label:"Espessura de Parede (mm)"}]},
@@ -3424,7 +3464,40 @@ function TabelaTolerancePage({T,onBack}) {
       </div>
 
       {resultado&&(
-        <div style={{...cSt,borderTop:"3px solid #10b981"}}>
+        <>
+          <div style={{...cSt,borderTop:"3px solid #8b5cf6",marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:4}}>🔤 Classes de Ajuste (Furo H / Eixo h,g,f,e,d)</div>
+            <div style={{fontSize:11.5,color:T.muted,marginBottom:16}}>
+              Furo sempre na base H (EI=0, sistema mais usado na indústria). Escopo: letras de eixo mais comuns comercialmente — não é o sistema completo de 28 letras da norma.
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
+                <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Classe</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Desvio Superior (µm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Desvio Inferior (µm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Faixa da Medida (mm)</th>
+                </tr></thead>
+                <tbody>{ISO286_CLASSES_COMUNS.map(c=>{
+                  const r=calcClasseAjuste(n,c);
+                  if(!r)return null;
+                  const sup=c.tipo==="furo"?r.es:r.es, inf=c.tipo==="furo"?r.ei:r.ei;
+                  const max=(n+sup/1000), min=(n+inf/1000);
+                  return (
+                    <tr key={c.label} style={{borderBottom:`1px solid ${T.border}50`}}>
+                      <td style={{padding:"9px 10px",color:c.tipo==="furo"?"#3b82f6":"#8b5cf6",fontWeight:700}}>{c.label}</td>
+                      <td style={{padding:"9px 10px",color:T.text}}>{sup>=0?"+":""}{sup.toFixed(1).replace(".",",")}</td>
+                      <td style={{padding:"9px 10px",color:T.text}}>{inf>=0?"+":""}{inf.toFixed(1).replace(".",",")}</td>
+                      <td style={{padding:"9px 10px",color:T.sub}}>{min.toFixed(4).replace(".",",")} — {max.toFixed(4).replace(".",",")}</td>
+                    </tr>
+                  );
+                })}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={{...cSt,borderTop:"3px solid #10b981"}}>
+          <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:10}}>📐 Largura da Tolerância por Grau IT</div>
           <div style={{fontSize:12.5,color:T.muted,marginBottom:16}}>
             Faixa de medida: <strong style={{color:T.text}}>{`>${resultado.faixa[0]} a ${resultado.faixa[1]}mm`}</strong> · Unidade de tolerância (i): <strong style={{color:T.text}}>{resultado.i.toFixed(3)} µm</strong>
           </div>
@@ -3446,11 +3519,12 @@ function TabelaTolerancePage({T,onBack}) {
               ))}</tbody>
             </table>
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       <div style={{fontSize:11,color:T.faint,textAlign:"center",marginTop:12}}>
-        A tolerância ISO define a <strong>largura total</strong> da zona (não é uma coluna de "±" por padrão) — a posição exata (acima/abaixo da medida nominal) depende do desvio fundamental (letras como H7, g6, etc.), que este módulo ainda não calcula. A coluna "±" acima assume distribuição simétrica, só como referência rápida.
+        Sistema base-furo (H). Desvios de eixo cobrem as letras d, e, f, g, h — as mais usadas comercialmente. Para outras letras (j, k, m, n, p...) ou sistema base-eixo, consulte a norma completa.
       </div>
     </div>
   );
