@@ -230,6 +230,8 @@ const interpDureza=(rows,xKey,yKey,xVal)=>{
   return null;
 };
 const fmtDureza=(n)=>n==null?"":new Intl.NumberFormat("pt-BR",{maximumFractionDigits:1}).format(n);
+// Padrão do projeto: toda medida em mm exibida com exatamente 2 casas decimais (ex: 6,00mm · 12,70mm)
+const fmtMM=(n)=>n==null?"—":new Intl.NumberFormat("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n)+"mm";
 
 const LIGA_DENSIDADES = {
   "Cobre":        8.96,
@@ -334,7 +336,31 @@ const BITOLAS_PADRAO = {
       {designacao:'6" x 2"',     alma:116.1,esp:2.5, peso:29.80},
     ],
   },
+  bwg: {
+    label:"BWG (Birmingham Wire Gauge)", tipo:"gauge", unidade:"Gauge → Espessura (mm)",
+    // Fonte: tabela padrão BWG (fabricantes de tubos/trocadores de calor) — usado pra parede de tubo, não é fórmula matemática
+    itens:[
+      {gauge:"5/0",mm:12.70},{gauge:"4/0",mm:11.53},{gauge:"3/0",mm:10.80},{gauge:"2/0",mm:9.65},
+      {gauge:"0",  mm:8.64}, {gauge:"1",  mm:7.62}, {gauge:"2",  mm:7.21}, {gauge:"3",  mm:6.58},
+      {gauge:"4",  mm:6.05}, {gauge:"5",  mm:5.59}, {gauge:"6",  mm:5.16}, {gauge:"7",  mm:4.57},
+      {gauge:"8",  mm:4.19}, {gauge:"9",  mm:3.76}, {gauge:"10", mm:3.40}, {gauge:"11", mm:3.05},
+      {gauge:"12", mm:2.77}, {gauge:"13", mm:2.41}, {gauge:"14", mm:2.11}, {gauge:"15", mm:1.83},
+      {gauge:"16", mm:1.65}, {gauge:"17", mm:1.47}, {gauge:"18", mm:1.24}, {gauge:"19", mm:1.07},
+      {gauge:"20", mm:0.89}, {gauge:"21", mm:0.81}, {gauge:"22", mm:0.71}, {gauge:"23", mm:0.64},
+      {gauge:"24", mm:0.56}, {gauge:"25", mm:0.51}, {gauge:"26", mm:0.46}, {gauge:"27", mm:0.41},
+      {gauge:"28", mm:0.36}, {gauge:"29", mm:0.33}, {gauge:"30", mm:0.30}, {gauge:"31", mm:0.25},
+      {gauge:"32", mm:0.23}, {gauge:"33", mm:0.20}, {gauge:"34", mm:0.18}, {gauge:"35", mm:0.13},
+      {gauge:"36", mm:0.10},
+    ],
+  },
+  awg: {
+    label:"AWG (American Wire Gauge)", tipo:"gauge_calc", unidade:"Gauge → Diâmetro (mm)",
+    // Calculado ao vivo pela fórmula oficial: d(mm) = 0,127 × 92^((36-n)/39)
+    gauges:[-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40],
+  },
 };
+const calcAWG=(n)=>0.127*Math.pow(92,(36-n)/39);
+const AWG_LABEL=(n)=>n===-3?"0000":n===-2?"000":n===-1?"00":String(n);
 
 // ── Tolerâncias ISO 286 — calculado ao vivo pela fórmula oficial (não é tabela fixa digitada) ──
 // Fonte: ISO 286-1:2010. i = 0,45×D^(1/3) + 0,001×D (µm), D = média geométrica da faixa de medida (mm).
@@ -3289,6 +3315,7 @@ function TabelaMedidasPage({T,onBack}) {
     {key:"tubos",  label:"Tubos",           emoji:"🔩", cor:"#06b6d4", subs:["tubo_redondo","tubo_quadrado","tubo_retangular"]},
     {key:"chapas", label:"Chapas / Fitas",  emoji:"▯",  cor:"#8b5cf6", subs:["chapa"]},
     {key:"laminados", label:"Laminados",    emoji:"📊", cor:"#f59e0b", subs:["cantoneira","perfil_u"]},
+    {key:"gauges", label:"Fios (BWG/AWG)",  emoji:"🧵", cor:"#ec4899", subs:["bwg","awg"]},
   ];
   const [aba,setAba]=useState("barras");
   const [sub,setSub]=useState("barra_redonda");
@@ -3300,11 +3327,13 @@ function TabelaMedidasPage({T,onBack}) {
 
   const dados=BITOLAS_PADRAO[sub];
   const isCatalogo=dados.tipo==="catalogo";
+  const isGauge=dados.tipo==="gauge";
+  const isGaugeCalc=dados.tipo==="gauge_calc";
   const densidade=LIGA_DENSIDADES[liga];
   const abaAtual=ABAS.find(a=>a.key===aba);
 
   const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
-  const SUB_LABELS={barra_redonda:"Redonda",barra_quadrada:"Quadrada",barra_sextavada:"Sextavada",barra_chata:"Chata",tubo_redondo:"Redondo",tubo_quadrado:"Quadrado",tubo_retangular:"Retangular",chapa:"Chapa/Fita",cantoneira:"Cantoneira (L)",perfil_u:"Perfil U"};
+  const SUB_LABELS={barra_redonda:"Redonda",barra_quadrada:"Quadrada",barra_sextavada:"Sextavada",barra_chata:"Chata",tubo_redondo:"Redondo",tubo_quadrado:"Quadrado",tubo_retangular:"Retangular",chapa:"Chapa/Fita",cantoneira:"Cantoneira (L)",perfil_u:"Perfil U",bwg:"BWG",awg:"AWG"};
 
   // Calcula peso/m (ou peso/m² para chapa) usando as mesmas fórmulas da Calculadora de Pesos
   const pesoPorMetro=(valOrPar)=>{
@@ -3318,11 +3347,12 @@ function TabelaMedidasPage({T,onBack}) {
     else if(sub==="tubo_retangular")area=calcAreaSecao("tubo_retangular",{largura:valOrPar[0],altura:valOrPar[1],esp:parede});
     else if(sub==="chapa")        area=calcAreaSecao("chapa_fita",{largura:1000,esp:valOrPar}); // kg/m² (largura=1m)
     else if(sub==="cantoneira")   area=calcAreaSecao("cantoneira",{aba:valOrPar,esp:parede});
+    else if(sub==="awg")          area=calcAreaSecao("arame",{d:valOrPar});
     if(area==null)return null;
     return (area*1000*densidade)/1_000_000;
   };
 
-  const linhas=isCatalogo?[]:(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
+  const linhas=(isCatalogo||isGauge)?[]:isGaugeCalc?dados.gauges.map(g=>({gauge:g,mm:calcAWG(g)})):(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
 
   return (
     <div>
@@ -3331,7 +3361,7 @@ function TabelaMedidasPage({T,onBack}) {
       <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
         <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:4}}>📐 Tabela de Medidas Padronizadas</div>
         <div style={{fontSize:12,color:T.muted}}>
-          Bitolas comerciais mais usadas no mercado brasileiro (referência Gerdau/NBR 8580 e mercado de metalon). O peso por metro de Barras, Tubos e Chapas é <strong style={{color:T.text}}>calculado ao vivo</strong> com a mesma fórmula da Calculadora de Pesos. Já os perfis Laminados de catálogo usam peso de fabricante (não recalculável por material).
+          Bitolas comerciais mais usadas no mercado brasileiro (referência Gerdau/NBR 8580 e mercado de metalon). O peso por metro de Barras, Tubos, Chapas e Arame (AWG) é <strong style={{color:T.text}}>calculado ao vivo</strong> com a mesma fórmula da Calculadora de Pesos. Perfis Laminados usam peso de catálogo, e BWG é tabela de referência de espessura de parede.
         </div>
       </div>
 
@@ -3362,9 +3392,19 @@ function TabelaMedidasPage({T,onBack}) {
           <strong style={{color:"#f59e0b"}}>⚠️ Cobertura parcial:</strong> por enquanto só temos Cantoneira de Abas Iguais (calculada) e Perfil U Dobrado (catálogo). Perfil I e Perfil T ainda não têm dado de catálogo confiável levantado — podem ser adicionados depois.
         </div>
       )}
+      {sub==="bwg"&&(
+        <div style={{background:"#ec489915",border:"1px solid #ec489940",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:11.5,color:T.sub,lineHeight:1.5}}>
+          Tabela de referência (não é fórmula matemática — o BWG é histórico). Usado principalmente pra especificar <strong style={{color:T.text}}>espessura de parede de tubos</strong> em trocadores de calor e caldeiras.
+        </div>
+      )}
+      {sub==="awg"&&(
+        <div style={{background:"#ec489915",border:"1px solid #ec489940",borderRadius:8,padding:"10px 12px",marginBottom:16,fontSize:11.5,color:T.sub,lineHeight:1.5}}>
+          Calculado ao vivo pela fórmula oficial: d(mm) = 0,127 × 92^((36-n)/39). Peso por metro calculado como arame (seção circular maciça).
+        </div>
+      )}
 
       <div style={{...cSt,borderTop:`3px solid ${abaAtual.cor}`}}>
-        {!isCatalogo&&(
+        {(!isCatalogo&&!isGauge)&&(
           <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
             <div style={{minWidth:180}}>
               <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Material (densidade)</label>
@@ -3381,7 +3421,7 @@ function TabelaMedidasPage({T,onBack}) {
                       padding:"7px 12px",borderRadius:6,cursor:"pointer",fontSize:12.5,fontWeight:parede===p?600:400,
                       background:parede===p?abaAtual.cor+"20":T.card2,color:parede===p?abaAtual.cor:T.sub,
                       border:`1px solid ${parede===p?abaAtual.cor:T.border}`,
-                    }}>{p.toFixed(2).replace(".",",")}</button>
+                    }}>{fmtMM(p)}</button>
                   ))}
                 </div>
               </div>
@@ -3402,6 +3442,17 @@ function TabelaMedidasPage({T,onBack}) {
                   <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Espessura (mm)</th>
                   <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Peso (kg/m)</th>
                 </>
+              ):isGauge?(
+                <>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Gauge BWG</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Espessura (mm)</th>
+                </>
+              ):isGaugeCalc?(
+                <>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Gauge AWG</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Diâmetro (mm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Peso Nominal (kg/m)</th>
+                </>
               ):(
                 <>
                   <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>{dados.unidade}</th>
@@ -3413,13 +3464,24 @@ function TabelaMedidasPage({T,onBack}) {
               {isCatalogo?dados.itens.map((it,i)=>(
                 <tr key={i} style={{borderBottom:`1px solid ${T.border}50`}}>
                   <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{it.designacao}</td>
-                  <td style={{padding:"9px 10px",color:T.sub}}>{it.alma.toFixed(1).replace(".",",")}</td>
-                  <td style={{padding:"9px 10px",color:T.sub}}>{it.esp.toFixed(1).replace(".",",")}</td>
+                  <td style={{padding:"9px 10px",color:T.sub}}>{fmtMM(it.alma)}</td>
+                  <td style={{padding:"9px 10px",color:T.sub}}>{fmtMM(it.esp)}</td>
                   <td style={{padding:"9px 10px",color:"#f59e0b",fontWeight:600}}>{it.peso.toFixed(2).replace(".",",")} kg/m</td>
+                </tr>
+              )):isGauge?dados.itens.map((it,i)=>(
+                <tr key={i} style={{borderBottom:`1px solid ${T.border}50`}}>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:700}}>BWG {it.gauge}</td>
+                  <td style={{padding:"9px 10px",color:"#ec4899",fontWeight:600}}>{fmtMM(it.mm)}</td>
+                </tr>
+              )):isGaugeCalc?linhas.map(l=>(
+                <tr key={l.gauge} style={{borderBottom:`1px solid ${T.border}50`}}>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:700}}>AWG {l.gauge}</td>
+                  <td style={{padding:"9px 10px",color:"#ec4899",fontWeight:600}}>{fmtMM(l.mm)}</td>
+                  <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:600}}>{fmtKg(pesoPorMetro(l.mm))}</td>
                 </tr>
               )):linhas.map(l=>(
                 <tr key={l.key} style={{borderBottom:`1px solid ${T.border}50`}}>
-                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{Array.isArray(l.val)?l.val.join(" × "):new Intl.NumberFormat("pt-BR",{maximumFractionDigits:2}).format(l.val)}</td>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{Array.isArray(l.val)?l.val.map(fmtMM).join(" × "):fmtMM(l.val)}</td>
                   <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:600}}>{l.peso!=null?fmtKg(l.peso):"—"}</td>
                 </tr>
               ))}
@@ -3474,20 +3536,21 @@ function TabelaTolerancePage({T,onBack}) {
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
                 <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
                   <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Classe</th>
-                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Desvio Superior (µm)</th>
-                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Desvio Inferior (µm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Desvio Superior (mm)</th>
+                  <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Desvio Inferior (mm)</th>
                   <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Faixa da Medida (mm)</th>
                 </tr></thead>
                 <tbody>{ISO286_CLASSES_COMUNS.map(c=>{
                   const r=calcClasseAjuste(n,c);
                   if(!r)return null;
                   const sup=c.tipo==="furo"?r.es:r.es, inf=c.tipo==="furo"?r.ei:r.ei;
-                  const max=(n+sup/1000), min=(n+inf/1000);
+                  const supMM=sup/1000, infMM=inf/1000;
+                  const max=(n+supMM), min=(n+infMM);
                   return (
                     <tr key={c.label} style={{borderBottom:`1px solid ${T.border}50`}}>
                       <td style={{padding:"9px 10px",color:c.tipo==="furo"?"#3b82f6":"#8b5cf6",fontWeight:700}}>{c.label}</td>
-                      <td style={{padding:"9px 10px",color:T.text}}>{sup>=0?"+":""}{sup.toFixed(1).replace(".",",")}</td>
-                      <td style={{padding:"9px 10px",color:T.text}}>{inf>=0?"+":""}{inf.toFixed(1).replace(".",",")}</td>
+                      <td style={{padding:"9px 10px",color:T.text}}>{supMM>=0?"+":""}{supMM.toFixed(4).replace(".",",")}</td>
+                      <td style={{padding:"9px 10px",color:T.text}}>{infMM>=0?"+":""}{infMM.toFixed(4).replace(".",",")}</td>
                       <td style={{padding:"9px 10px",color:T.sub}}>{min.toFixed(4).replace(".",",")} — {max.toFixed(4).replace(".",",")}</td>
                     </tr>
                   );
@@ -3499,20 +3562,20 @@ function TabelaTolerancePage({T,onBack}) {
           <div style={{...cSt,borderTop:"3px solid #10b981"}}>
           <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:10}}>📐 Largura da Tolerância por Grau IT</div>
           <div style={{fontSize:12.5,color:T.muted,marginBottom:16}}>
-            Faixa de medida: <strong style={{color:T.text}}>{`>${resultado.faixa[0]} a ${resultado.faixa[1]}mm`}</strong> · Unidade de tolerância (i): <strong style={{color:T.text}}>{resultado.i.toFixed(3)} µm</strong>
+            Faixa de medida: <strong style={{color:T.text}}>{`>${resultado.faixa[0]} a ${resultado.faixa[1]}mm`}</strong> · Unidade de tolerância (i): <strong style={{color:T.text}}>{(resultado.i/1000).toFixed(5).replace(".",",")} mm</strong>
           </div>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13.5}}>
               <thead><tr style={{borderBottom:`1px solid ${T.border}`}}>
                 <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Grau IT</th>
-                <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Tolerância (µm)</th>
                 <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Tolerância (mm)</th>
+                <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>± (mm)</th>
                 <th style={{padding:"8px 10px",textAlign:"left",color:T.muted,fontSize:11,textTransform:"uppercase"}}>Uso Típico</th>
               </tr></thead>
               <tbody>{resultado.graus.map(g=>(
                 <tr key={g.grau} style={{borderBottom:`1px solid ${T.border}50`}}>
                   <td style={{padding:"9px 10px",color:"#3b82f6",fontWeight:700}}>IT{g.grau}</td>
-                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{new Intl.NumberFormat("pt-BR",{maximumFractionDigits:1}).format(g.um)} µm</td>
+                  <td style={{padding:"9px 10px",color:T.text,fontWeight:600}}>{(g.um/1000).toFixed(4).replace(".",",")}</td>
                   <td style={{padding:"9px 10px",color:T.sub}}>±{(g.um/2000).toFixed(4).replace(".",",")}</td>
                   <td style={{padding:"9px 10px",color:T.faint,fontSize:12.5}}>{ISO286_USO[g.grau]}</td>
                 </tr>
