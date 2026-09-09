@@ -1956,6 +1956,9 @@ function PresentMode({onExit}) {
   const [metasByMonth,setMetasByMonth]=useState({});
   const [holidays,setHolidays]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [slide,setSlide]=useState(0);
+  const [isFullscreen,setIsFullscreen]=useState(false);
+  const T=THEMES.dark;
   useEffect(()=>{
     (async()=>{
       try{const r=await window.storage.get("diario_entries");if(r)setEntries(JSON.parse(r.value));}catch(_){}
@@ -1968,7 +1971,9 @@ function PresentMode({onExit}) {
     })();
     const fn=(e)=>{if(e.key==="Escape")onExit();};
     window.addEventListener("keydown",fn);
-    return()=>window.removeEventListener("keydown",fn);
+    const fsChange=()=>setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange",fsChange);
+    return()=>{window.removeEventListener("keydown",fn);document.removeEventListener("fullscreenchange",fsChange);};
   },[]);
   const latest=entries.length>0?entries[entries.length-1]:null;
   const activeMonth=latest?latest.date.slice(0,7):today().slice(0,7);
@@ -1989,6 +1994,25 @@ function PresentMode({onExit}) {
     {title:"Prev. Fat. Mês",       val:latest?.prevMes,    color:"#8b5cf6",emoji:"📈"},
     {title:"Prev. Fat. Próx. Mês", val:latest?.prevProxMes,color:"#06b6d4",emoji:"🔮"},
   ];
+
+  // ── Rotação automática de telas (modo TV/kiosk) ──
+  const SLIDES=[
+    {id:"kpis",label:"KPIs"},
+    ...(entries.length>1?[{id:"evolucao",label:"Evolução"}]:[]),
+    ...(entries.length>2?[{id:"heatmap",label:"Mapa de Calor"}]:[]),
+  ];
+  useEffect(()=>{
+    if(SLIDES.length<=1)return;
+    const t=setInterval(()=>setSlide(s=>(s+1)%SLIDES.length),15000);
+    return()=>clearInterval(t);
+  },[SLIDES.length]);
+  useEffect(()=>{ if(slide>=SLIDES.length)setSlide(0); },[SLIDES.length]);
+
+  const toggleFullscreen=()=>{
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen?.().catch(()=>{});
+    else document.exitFullscreen?.().catch(()=>{});
+  };
+
   return (
     <div className="dg-present" style={{position:"fixed",inset:0,background:"#080e1a",zIndex:9999,display:"flex",flexDirection:"column",padding:36,overflowY:"auto"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
@@ -1996,14 +2020,37 @@ function PresentMode({onExit}) {
           <div style={{fontSize:26,fontWeight:800,color:"#f1f5f9",letterSpacing:-0.5}}>Dashboard Gerencial</div>
           <div style={{fontSize:13,color:"#64748b",marginTop:4,textTransform:"capitalize"}}>{getDynDate()}</div>
         </div>
-        <button onClick={onExit} style={{display:"flex",alignItems:"center",gap:6,background:"#1e293b",color:"#94a3b8",border:"1px solid #334155",borderRadius:10,padding:"10px 18px",cursor:"pointer",fontSize:14}}>
-          <X size={16}/> Sair
-        </button>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {SLIDES.length>1&&(
+            <div style={{display:"flex",gap:6}}>
+              {SLIDES.map((s,i)=>(
+                <button key={s.id} onClick={()=>setSlide(i)} title={s.label} style={{
+                  width:i===slide?24:8,height:8,borderRadius:4,border:"none",cursor:"pointer",
+                  background:i===slide?"#3b82f6":"#334155",transition:"all .3s ease",
+                }}/>
+              ))}
+            </div>
+          )}
+          <button onClick={toggleFullscreen} style={{display:"flex",alignItems:"center",gap:6,background:"#1e293b",color:"#94a3b8",border:"1px solid #334155",borderRadius:10,padding:"10px 14px",cursor:"pointer",fontSize:14}}>
+            <Maximize2 size={15}/> {isFullscreen?"Sair da Tela Cheia":"Tela Cheia"}
+          </button>
+          <button onClick={onExit} style={{display:"flex",alignItems:"center",gap:6,background:"#1e293b",color:"#94a3b8",border:"1px solid #334155",borderRadius:10,padding:"10px 18px",cursor:"pointer",fontSize:14}}>
+            <X size={16}/> Sair
+          </button>
+        </div>
       </div>
       {loading ? (
         <div style={{color:"#64748b",textAlign:"center",marginTop:80,fontSize:16}}>Carregando...</div>
+      ):SLIDES[slide]?.id==="evolucao"?(
+        <div className="dg-page" style={{background:"#1e293b",border:"1px solid #334155",borderRadius:14,padding:24,flex:1}}>
+          <DailyChart entries={entries} T={T} metaFaturamento={metas.faturamento} extraHols={extraHols}/>
+        </div>
+      ):SLIDES[slide]?.id==="heatmap"?(
+        <div className="dg-page" style={{background:"#1e293b",border:"1px solid #334155",borderRadius:14,padding:24,flex:1}}>
+          <HeatmapCalendar entries={entries} T={T}/>
+        </div>
       ):(
-        <>
+        <div className="dg-page">
           <div className="dg-grid dg-grid-5" style={{display:"grid",gap:16,marginBottom:20}}>
             {kpiDefs.map(({title,val,color,emoji})=>(
               <div key={title} style={{background:"#1e293b",border:`1px solid #334155`,borderTop:`4px solid ${color}`,borderRadius:14,padding:24}}>
@@ -2059,10 +2106,10 @@ function PresentMode({onExit}) {
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
       <div style={{marginTop:"auto",textAlign:"center",color:"#334155",fontSize:12,paddingTop:24}}>
-        Pressione <kbd style={{background:"#1e293b",border:"1px solid #334155",borderRadius:4,padding:"2px 6px",color:"#64748b"}}>ESC</kbd> para sair
+        Pressione <kbd style={{background:"#1e293b",border:"1px solid #334155",borderRadius:4,padding:"2px 6px",color:"#64748b"}}>ESC</kbd> para sair {SLIDES.length>1&&"· Rotação automática a cada 15s"}
       </div>
     </div>
   );
@@ -3352,7 +3399,7 @@ function TabelaMedidasPage({T,onBack}) {
     return (area*1000*densidade)/1_000_000;
   };
 
-  const linhas=(isCatalogo||isGauge)?[]:isGaugeCalc?dados.gauges.map(g=>({gauge:g,mm:calcAWG(g)})):(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
+  const linhas=(isCatalogo||isGauge)?[]:isGaugeCalc?dados.gauges.map(g=>({gauge:AWG_LABEL(g),mm:calcAWG(g)})):(dados.pares||dados.valores).map(v=>({key:Array.isArray(v)?v.join("×"):v, val:v, peso:pesoPorMetro(v)}));
 
   return (
     <div>
