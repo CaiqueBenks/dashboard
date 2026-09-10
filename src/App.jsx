@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie, ComposedChart, Line } from "recharts";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, ReferenceLine, PieChart, Pie, ComposedChart, Line, Brush } from "recharts";
 import { TrendingUp, ShoppingCart, BarChart2, DollarSign, AlertTriangle, Package, CheckCircle, Clock, XCircle, Plus, Save, Trash2, ChevronDown, ChevronUp, Edit2, Sun, Moon, Archive, ArrowUpRight, ArrowDownRight, Minus, Calendar, Download, Home as HomeIcon, Maximize2, X, Menu, LogOut, UserPlus, Shield, User, Eye, EyeOff, Lock, Users as UsersIcon } from "lucide-react";
 
 // ─── CSS Global ───────────────────────────────────────────────
@@ -1591,7 +1591,7 @@ function Top5Days({ entries, T }) {
 }
 
 // ── DailyChart ───────────────────────────────────────────────
-function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
+function DailyChart({entries,T,metaFaturamento,extraHols=[],yoyEntries=null}) {
   const [active, setActive] = useState(["faturamento","prevMes"]);
   const [range,  setRange]  = useState(30);
   const [showMeta, setShowMeta] = useState(true);
@@ -1602,17 +1602,55 @@ function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
     ? entries.filter(e=>(!customFrom||e.date>=customFrom)&&(!customTo||e.date<=customTo))
     : (range === 0 ? entries : entries.slice(-range));
   const metaVal = parseBRL(metaFaturamento);
-  const data = filtered.map(e => {
+  const yoyMap = useMemo(()=>{
+    if(!yoyEntries)return null;
+    const m={}; yoyEntries.forEach(e=>{m[e.date]=e;}); return m;
+  },[yoyEntries]);
+  const data = filtered.map((e,idx) => {
     let metaLinha=null;
     if(metaVal&&e.date){
       const d=new Date(e.date+"T12:00:00");
       const wd=getWDInfo(d.getFullYear(),d.getMonth()+1,extraHols,d);
       if(wd.total>0)metaLinha=(metaVal/wd.total)*wd.passed;
     }
+    const prev=idx>0?filtered[idx-1]:null;
+    const delta=prev&&e.faturamento!=null&&prev.faturamento!=null?e.faturamento-prev.faturamento:null;
+    let yoyFat=null;
+    if(yoyMap&&e.date){
+      const d=new Date(e.date+"T12:00:00");
+      const yoyKey=`${d.getFullYear()-1}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      if(yoyMap[yoyKey]?.faturamento!=null)yoyFat=yoyMap[yoyKey].faturamento;
+    }
     return { dia:toDisplay(e.date), faturamento:e.faturamento, atrasos:e.atrasos,
-      vendas:e.vendas, prevMes:e.prevMes, prevProxMes:e.prevProxMes, metaLinha };
+      vendas:e.vendas, prevMes:e.prevMes, prevProxMes:e.prevProxMes, metaLinha, delta, yoyFat };
   });
-  const ttStyle = {background:T.card, border:`1px solid ${T.border}`, borderRadius:8, color:T.text};
+  const RichTooltip=({active,payload,label})=>{
+    if(!active||!payload||!payload.length)return null;
+    const pt=payload[0]?.payload;
+    return (
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,padding:"10px 12px",fontSize:12,boxShadow:"0 8px 20px rgba(0,0,0,.25)"}}>
+        <div style={{color:T.text,fontWeight:700,marginBottom:6}}>{label}</div>
+        {payload.filter(p=>p.dataKey!=="metaLinha").map(p=>(
+          <div key={p.dataKey} style={{display:"flex",justifyContent:"space-between",gap:16,color:p.color,marginBottom:2}}>
+            <span>{KPI_OPTIONS.find(o=>o.key===p.dataKey)?.label||p.dataKey}</span>
+            <span style={{fontWeight:700}}>{fmtRS(p.value)}</span>
+          </div>
+        ))}
+        {pt?.delta!=null&&active===true&&payload.some(p=>p.dataKey==="faturamento")&&(
+          <div style={{display:"flex",justifyContent:"space-between",gap:16,color:T.faint,marginTop:4}}>
+            <span>Incremento do dia</span>
+            <span style={{fontWeight:600,color:pt.delta>=0?"#10b981":"#ef4444"}}>{pt.delta>=0?"+":""}{fmtRS(pt.delta)}</span>
+          </div>
+        )}
+        {pt?.yoyFat!=null&&(
+          <div style={{marginTop:6,paddingTop:6,borderTop:`1px dashed ${T.border}`,display:"flex",justifyContent:"space-between",gap:16,color:T.faint}}>
+            <span>📅 Mesmo dia, ano anterior</span>
+            <span style={{fontWeight:600}}>{fmtRS(pt.yoyFat)}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
   const RANGES  = [{l:"7d",v:7},{l:"15d",v:15},{l:"30d",v:30},{l:"Tudo",v:0},{l:"Personalizado",v:"custom"}];
   return (
     <div>
@@ -1676,7 +1714,7 @@ function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
             <CartesianGrid strokeDasharray="3 3" stroke={T.border}/>
             <XAxis dataKey="dia" tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false}/>
             <YAxis tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>"R$"+(v>=1000000?(v/1000000).toFixed(1)+"M":(v/1000).toFixed(0)+"k")}/>
-            <Tooltip formatter={(v,n)=>[fmtRS(v),n==="metaLinha"?"Meta Prorata":(KPI_OPTIONS.find(o=>o.key===n)?.label||n)]} contentStyle={ttStyle} labelStyle={{color:T.sub}}/>
+            <Tooltip content={<RichTooltip/>}/>
             <Legend wrapperStyle={{color:T.sub,fontSize:12}} formatter={n=>n==="metaLinha"?"Meta Prorata":(KPI_OPTIONS.find(o=>o.key===n)?.label||n)}/>
             {KPI_OPTIONS.filter(o=>active.includes(o.key)).map(({key,color})=>(
               <Area key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2} fill={`url(#g_${key})`} dot={{fill:color,r:4}} activeDot={{r:6}}/>
@@ -1684,9 +1722,14 @@ function DailyChart({entries,T,metaFaturamento,extraHols=[]}) {
             {showMeta&&metaVal>0&&(
               <Line type="monotone" dataKey="metaLinha" stroke="#f59e0b" strokeWidth={2} strokeDasharray="6 4" dot={false} activeDot={{r:5}} connectNulls/>
             )}
+            {data.length>10&&(
+              <Brush dataKey="dia" height={24} stroke="#3b82f6" fill={T.card2} travellerWidth={9}
+                tickFormatter={()=>""} />
+            )}
           </ComposedChart>
         </ResponsiveContainer>
       )}
+      {data.length>10&&<div style={{fontSize:10.5,color:T.faint,textAlign:"center",marginTop:4}}>🔍 Arraste as bordas da barra abaixo do gráfico pra dar zoom no período</div>}
     </div>
   );
 }
@@ -3887,7 +3930,7 @@ function MesesFechados({T,reloadKey,currentUser}) {
         )}
 
         <div style={{...cSt,borderLeft:"4px solid #ef4444",marginBottom:16}}><AtrasoChart entries={s.entries} metaValue={null} T={T}/></div>
-        <div style={{...cSt,marginBottom:16}}><DailyChart entries={s.entries} T={T} metaFaturamento={(metasByMonth[s.id]||metasByMonth.default||{}).faturamento} extraHols={holidays}/></div>
+        <div style={{...cSt,marginBottom:16}}><DailyChart entries={s.entries} T={T} metaFaturamento={(metasByMonth[s.id]||metasByMonth.default||{}).faturamento} extraHols={holidays} yoyEntries={yoy?.entries||null}/></div>
         {s.entries.length>1&&<div style={{...cSt,marginBottom:16}}><WeekdayChart entries={s.entries} T={T}/></div>}
         {s.entries.length>2&&<div style={{...cSt,marginBottom:16}}><HeatmapCalendar entries={s.entries} T={T}/></div>}
 
