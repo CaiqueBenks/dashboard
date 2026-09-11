@@ -3732,6 +3732,199 @@ function PesoCalculadoraPage({T,onBack}) {
     </div>
   );
 }
+// ── AnaliticoPage: filtro cruzado (período + material) com insights automáticos ──
+function AnaliticoPage({T}) {
+  const [months,setMonths]=useState([]);
+  const [produtosByMonth,setProdutosByMonth]=useState({});
+  const [metasByMonth,setMetasByMonth]=useState({});
+  const [loading,setLoading]=useState(true);
+  const [periodo,setPeriodo]=useState("6m");
+  const [material,setMaterial]=useState("todos");
+  const [custFrom,setCustFrom]=useState("");
+  const [custTo,setCustTo]=useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      try{const r=await window.storage.get("closed_months");if(r)setMonths(JSON.parse(r.value));}catch(_){}
+      try{const r=await window.storage.get("diario_produtos_mensais");if(r)setProdutosByMonth(JSON.parse(r.value));}catch(_){}
+      try{const r=await window.storage.get("diario_metas_by_month");if(r)setMetasByMonth(JSON.parse(r.value));}catch(_){}
+      setLoading(false);
+    })();
+  },[]);
+
+  const cSt={background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:T.compact?14:20};
+  const sorted=[...months].sort((a,b)=>a.id.localeCompare(b.id));
+
+  // Filtro de período
+  const PERIODOS=[{k:"3m",label:"Últimos 3 meses"},{k:"6m",label:"Últimos 6 meses"},{k:"12m",label:"Últimos 12 meses"},{k:"ano",label:"Ano corrente"},{k:"tudo",label:"Tudo"},{k:"custom",label:"Personalizado"}];
+  const filtrados=sorted.filter(m=>{
+    if(periodo==="tudo")return true;
+    if(periodo==="ano")return m.id.startsWith(today().slice(0,4));
+    if(periodo==="custom")return(!custFrom||m.id>=custFrom)&&(!custTo||m.id<=custTo);
+    const n=periodo==="3m"?3:periodo==="6m"?6:12;
+    return sorted.slice(-n).some(x=>x.id===m.id);
+  });
+
+  // Agregação por mês filtrado, considerando o filtro de material
+  const linhas=filtrados.map(m=>{
+    const rows=produtosByMonth[m.id]||[];
+    const rowsFilt=material==="todos"?rows:rows.filter(r=>r.material===material);
+    const fatProd=rowsFilt.reduce((s,r)=>s+(parseBRL(r.faturadoRS)||0),0);
+    const vendProd=rowsFilt.reduce((s,r)=>s+(parseBRL(r.vendidoRS)||0),0);
+    const metaVal=parseBRL((metasByMonth[m.id]||metasByMonth.default||{}).faturamento);
+    const hit=metaVal?(m.summary.faturamento||0)>=metaVal:null;
+    return {id:m.id,label:m.label,faturamento:material==="todos"?(m.summary.faturamento||0):fatProd,vendido:material==="todos"?(m.summary.vendas||0):vendProd,fatProd,vendProd,hit,temProduto:rowsFilt.length>0};
+  });
+
+  const totalFat=linhas.reduce((s,l)=>s+l.faturamento,0);
+  const totalVend=linhas.reduce((s,l)=>s+l.vendido,0);
+  const gapProdutos=linhas.reduce((s,l)=>s+l.vendProd,0)-linhas.reduce((s,l)=>s+l.fatProd,0);
+  const comMeta=linhas.filter(l=>l.hit!=null);
+  const taxaMetas=comMeta.length?(comMeta.filter(l=>l.hit).length/comMeta.length)*100:null;
+  const melhorMes=linhas.length?[...linhas].sort((a,b)=>b.faturamento-a.faturamento)[0]:null;
+  const piorMes=linhas.length?[...linhas].sort((a,b)=>a.faturamento-b.faturamento)[0]:null;
+  const media=linhas.length?totalFat/linhas.length:null;
+
+  // Mix de material no período filtrado (todas as ligas, pra contextualizar mesmo com "todos" selecionado)
+  const mixMateriais=(()=>{
+    const soma={};
+    filtrados.forEach(m=>{
+      (produtosByMonth[m.id]||[]).forEach(r=>{
+        soma[r.material]=(soma[r.material]||0)+(parseBRL(r.faturadoRS)||0);
+      });
+    });
+    return Object.entries(soma).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).map(([tipo,rs])=>({tipo,rs}));
+  })();
+  const materialTopo=mixMateriais[0];
+
+  const insights=[];
+  if(media!=null&&linhas.length>1){
+    const ultimo=linhas[linhas.length-1];
+    const diffPct=media?((ultimo.faturamento-media)/media)*100:null;
+    if(diffPct!=null)insights.push(`Faturamento de ${ultimo.label} ficou ${diffPct>=0?`${diffPct.toFixed(0)}% acima`:`${Math.abs(diffPct).toFixed(0)}% abaixo`} da média do período filtrado.`);
+  }
+  if(melhorMes&&piorMes&&melhorMes.id!==piorMes.id)insights.push(`Melhor mês: ${melhorMes.label} (${fmtRS(melhorMes.faturamento)}) · Pior mês: ${piorMes.label} (${fmtRS(piorMes.faturamento)}).`);
+  if(taxaMetas!=null)insights.push(`Taxa de metas atingidas no período: ${taxaMetas.toFixed(0)}% (${comMeta.filter(l=>l.hit).length} de ${comMeta.length} meses com meta definida).`);
+  if(material==="todos"&&materialTopo)insights.push(`Material mais representativo do período: ${materialTopo.tipo} (${fmtRS(materialTopo.rs)}, ${((materialTopo.rs/mixMateriais.reduce((s,m)=>s+m.rs,0))*100).toFixed(0)}% do faturamento por produto).`);
+  if(material!=="todos"&&gapProdutos!==0)insights.push(`Gap Vendido vs Faturado de ${material} no período: ${fmtRS(Math.abs(gapProdutos))} ${gapProdutos>0?"pendente de faturamento":"faturado além do vendido (backlog anterior)"}.`);
+
+  if(loading)return (
+    <div className="dg-page">
+      <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14}}>
+        {Array.from({length:4}).map((_,i)=><SkeletonCard key={i} T={T}/>)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="dg-page">
+      <div style={{...cSt,marginBottom:16,borderTop:"3px solid #3b82f6"}}>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <div>
+            <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Período</label>
+            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+              {PERIODOS.map(p=>(
+                <button key={p.k} onClick={()=>setPeriodo(p.k)} style={{
+                  padding:"7px 12px",borderRadius:6,cursor:"pointer",fontSize:12.5,fontWeight:periodo===p.k?600:400,
+                  background:periodo===p.k?"#3b82f620":T.card2,color:periodo===p.k?"#3b82f6":T.sub,
+                  border:`1px solid ${periodo===p.k?"#3b82f6":T.border}`,
+                }}>{p.label}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{minWidth:180}}>
+            <label style={{display:"block",fontSize:11.5,color:T.sub,marginBottom:5,fontWeight:600}}>Material</label>
+            <select value={material} onChange={e=>setMaterial(e.target.value)} style={{width:"100%",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"8px 10px",color:T.text,fontSize:13.5}}>
+              <option value="todos">Todos os materiais</option>
+              {MATERIAIS.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+        </div>
+        {periodo==="custom"&&(
+          <div style={{display:"flex",gap:8,alignItems:"center",marginTop:12,flexWrap:"wrap"}}>
+            <input type="month" value={custFrom} onChange={e=>setCustFrom(e.target.value)} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",color:T.text,fontSize:12.5}}/>
+            <span style={{fontSize:12,color:T.faint}}>até</span>
+            <input type="month" value={custTo} onChange={e=>setCustTo(e.target.value)} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,padding:"7px 10px",color:T.text,fontSize:12.5}}/>
+          </div>
+        )}
+      </div>
+
+      {linhas.length===0?(
+        <div style={{...cSt,textAlign:"center",padding:52}}>
+          <div className="dg-empty-icon" style={{width:64,height:64,borderRadius:"50%",background:"#3b82f620",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontSize:30}}>📊</div>
+          <div style={{color:T.text,fontSize:16,fontWeight:600,marginBottom:6}}>Nenhum dado no período selecionado</div>
+          <div style={{color:T.faint,fontSize:13}}>Ajuste o filtro de período ou material acima.</div>
+        </div>
+      ):(
+        <>
+          <div className="dg-grid dg-grid-4" style={{display:"grid",gap:14,marginBottom:16}}>
+            <div className="dg-lift" style={{...cSt,borderTop:"3px solid #3b82f6"}}>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Faturamento no Período</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#3b82f6"}}><AnimatedNumber value={totalFat} format={fmtRS}/></div>
+              <div style={{fontSize:11,color:T.faint,marginTop:4}}>{linhas.length} mês(es)</div>
+            </div>
+            <div className="dg-lift" style={{...cSt,borderTop:"3px solid #10b981"}}>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Vendido no Período</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#10b981"}}><AnimatedNumber value={totalVend} format={fmtRS}/></div>
+              <div style={{fontSize:11,color:T.faint,marginTop:4}}>{material==="todos"?"Total geral":`Só ${material}`}</div>
+            </div>
+            <div className="dg-lift" style={{...cSt,borderTop:"3px solid #f59e0b"}}>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Média Mensal</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#f59e0b"}}>{media!=null?fmtRS(media):"—"}</div>
+              <div style={{fontSize:11,color:T.faint,marginTop:4}}>Faturamento/mês</div>
+            </div>
+            <div className="dg-lift" style={{...cSt,borderTop:`3px solid ${taxaMetas>=70?"#10b981":taxaMetas>=40?"#f59e0b":"#ef4444"}`}}>
+              <div style={{fontSize:11,color:T.muted,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Taxa de Metas</div>
+              <div style={{fontSize:22,fontWeight:700,color:T.text}}>{taxaMetas!=null?`${taxaMetas.toFixed(0)}%`:"—"}</div>
+              <div style={{fontSize:11,color:T.faint,marginTop:4}}>{comMeta.length} mês(es) com meta</div>
+            </div>
+          </div>
+
+          {insights.length>0&&(
+            <div style={{...cSt,marginBottom:16,borderTop:"3px solid #8b5cf6"}}>
+              <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>💡</span> Insights Automáticos</div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {insights.map((txt,i)=>(
+                  <div key={i} style={{display:"flex",gap:8,fontSize:13,color:T.sub,lineHeight:1.5}}>
+                    <span style={{color:"#8b5cf6",flexShrink:0}}>•</span>{txt}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{...cSt,marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>Faturamento por Mês {material!=="todos"&&`— ${material}`}</div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={linhas.map(l=>({mes:l.label,faturamento:l.faturamento}))}>
+                <CartesianGrid strokeDasharray="3 3" stroke={T.border}/>
+                <XAxis dataKey="mes" tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false}/>
+                <YAxis tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>"R$"+(v/1000000).toFixed(1)+"M"}/>
+                <Tooltip formatter={v=>[fmtRS(v),"Faturamento"]} contentStyle={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,color:T.text}} labelStyle={{color:T.sub}}/>
+                <Bar dataKey="faturamento" radius={[4,4,0,0]}>
+                  {linhas.map((l,i)=><Cell key={i} fill={l.hit===false?"#ef4444":l.hit===true?"#10b981":"#3b82f6"}/>)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{display:"flex",gap:14,marginTop:10,fontSize:11,color:T.faint,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:9,height:9,borderRadius:2,background:"#10b981"}}/> Meta batida</div>
+              <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:9,height:9,borderRadius:2,background:"#ef4444"}}/> Abaixo da meta</div>
+              <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:9,height:9,borderRadius:2,background:"#3b82f6"}}/> Sem meta definida</div>
+            </div>
+          </div>
+
+          {material==="todos"&&mixMateriais.length>0&&(
+            <div style={cSt}>
+              <div style={{fontSize:14,fontWeight:600,color:T.text,marginBottom:16}}>Mix de Materiais no Período (por Faturamento)</div>
+              <ProductMixPie produtos={mixMateriais.map(m=>({tipo:m.tipo,rs:m.rs,kg:0}))} T={T}/>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function MesesFechados({T,reloadKey,currentUser}) {
   const canManage=isAdmin(currentUser);
   const [months,  setMonths]  =useState([]);
@@ -4322,11 +4515,12 @@ export default function App() {
     {section:"Painel de Vendas",items:[
       {id:"diario",   label:"Fechamento Diário", icon:BarChart2,  alertDot:atrasoAlert},
       {id:"fechados", label:"Meses Fechados",    icon:Archive},
+      {id:"analitico",label:"Painel Analítico",  icon:TrendingUp},
     ]},
     {section:"Biblioteca",items:[{id:"biblioteca",label:"Biblioteca",icon:Package}]},
     ...(isAdmin(currentUser)?[{section:"Administração",items:[{id:"usuarios",label:"Usuários",icon:UsersIcon},{id:"auditoria",label:"Log de Auditoria",icon:Shield}]}]:[]),
   ];
-  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas","tabela-medidas":"Tabela de Medidas Padronizadas","tabela-tolerancia":"Tolerâncias Dimensionais (ISO 286)"};
+  const titles={home:"Início",diario:"Fechamento Diário",fechados:"Meses Fechados",analitico:"Painel Analítico",biblioteca:"Biblioteca",usuarios:"Usuários",auditoria:"Log de Auditoria","calc-pesos":"Calculadora de Pesos","calc-unidades":"Conversor de Unidades","tabela-ligas":"Tabela de Ligas","tabela-medidas":"Tabela de Medidas Padronizadas","tabela-tolerancia":"Tolerâncias Dimensionais (ISO 286)"};
   const handleMonthClosed=()=>{setReloadKey(k=>k+1);setPage("fechados");};
 
   if(authLoading){
@@ -4446,6 +4640,7 @@ export default function App() {
           {page==="home"     &&<HomePage         T={T} onNavigate={setPage}/>}
           {page==="diario"   &&<FechamentoDiario T={T} onMonthClosed={handleMonthClosed} onAtrasoAlert={setAtrasoAlert} currentUser={currentUser} newEntrySignal={newEntrySignal}/>}
           {page==="fechados" &&<MesesFechados    T={T} reloadKey={reloadKey} currentUser={currentUser}/>}
+          {page==="analitico"&&<AnaliticoPage    T={T}/>}
           {page==="biblioteca"&&<BibliotecaPage  T={T} onNavigate={setPage}/>}
           {page==="calc-pesos"&&<PesoCalculadoraPage T={T} onBack={()=>setPage("biblioteca")}/>}
           {page==="calc-unidades"&&<ConversorPage T={T} onBack={()=>setPage("biblioteca")}/>}
