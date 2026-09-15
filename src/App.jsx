@@ -3797,6 +3797,26 @@ function AnaliticoPage({T}) {
   })();
   const materialTopo=mixMateriais[0];
 
+  // ── Sazonalidade: média de faturamento por mês do calendário, usando TODO o histórico (não o período filtrado) ──
+  const MESES_NOMES=["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const sazonalidade=(()=>{
+    if(sorted.length<2)return null;
+    const porMes=Array.from({length:12},()=>[]);
+    sorted.forEach(m=>{
+      const mm=parseInt(m.id.slice(5,7),10)-1;
+      if(mm>=0&&mm<12)porMes[mm].push(m.summary.faturamento||0);
+    });
+    const dados=porMes.map((vals,i)=>({
+      mes:MESES_NOMES[i], media:vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null, anos:vals.length,
+    }));
+    const comDado=dados.filter(d=>d.media!=null);
+    if(comDado.length<2)return null;
+    const mediaGeral=comDado.reduce((s,d)=>s+d.media,0)/comDado.length;
+    const melhor=[...comDado].sort((a,b)=>b.media-a.media)[0];
+    const pior=[...comDado].sort((a,b)=>a.media-b.media)[0];
+    return {dados,mediaGeral,melhor,pior};
+  })();
+
   const insights=[];
   if(media!=null&&linhas.length>1){
     const ultimo=linhas[linhas.length-1];
@@ -3912,6 +3932,33 @@ function AnaliticoPage({T}) {
               <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:9,height:9,borderRadius:2,background:"#3b82f6"}}/> Sem meta definida</div>
             </div>
           </div>
+
+          {sazonalidade&&(
+            <div style={{...cSt,marginBottom:16,borderTop:"3px solid #06b6d4"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:8}}>
+                <div style={{fontSize:14,fontWeight:600,color:T.text}}>📆 Sazonalidade — Média Histórica por Mês do Calendário</div>
+                <div style={{fontSize:11,color:T.faint}}>Usa todo o histórico fechado, independente do filtro de período acima</div>
+              </div>
+              <div style={{fontSize:11.5,color:T.muted,marginBottom:16}}>
+                Média geral: <strong style={{color:T.text}}>{fmtRS(sazonalidade.mediaGeral)}</strong> · Melhor mês historicamente: <strong style={{color:"#10b981"}}>{sazonalidade.melhor.mes}</strong> ({fmtRS(sazonalidade.melhor.media)}) · Mais fraco: <strong style={{color:"#ef4444"}}>{sazonalidade.pior.mes}</strong> ({fmtRS(sazonalidade.pior.media)})
+              </div>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={sazonalidade.dados}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={T.border}/>
+                  <XAxis dataKey="mes" tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fill:T.muted,fontSize:11}} axisLine={false} tickLine={false} tickFormatter={v=>"R$"+(v/1000000).toFixed(1)+"M"}/>
+                  <Tooltip formatter={(v,n,p)=>[v!=null?fmtRS(v):"Sem dado",`Média (${p.payload.anos} ano${p.payload.anos!==1?"s":""})`]} contentStyle={{background:T.card,border:`1px solid ${T.border}`,borderRadius:8,color:T.text}} labelStyle={{color:T.sub}}/>
+                  <ReferenceLine y={sazonalidade.mediaGeral} stroke={T.faint} strokeDasharray="4 4" label={{value:"Média geral",fill:T.faint,fontSize:10,position:"insideTopRight"}}/>
+                  <Bar dataKey="media" radius={[4,4,0,0]}>
+                    {sazonalidade.dados.map((d,i)=><Cell key={i} fill={d.media==null?T.border:d.media>=sazonalidade.mediaGeral?"#06b6d4":"#64748b"}/>)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{fontSize:10.5,color:T.faint,marginTop:8,textAlign:"center"}}>
+                Barras cinza = meses sem dado ou abaixo da média geral. Meses com apenas 1 ano de histórico têm menos confiabilidade estatística.
+              </div>
+            </div>
+          )}
 
           {material==="todos"&&mixMateriais.length>0&&(
             <div style={cSt}>
